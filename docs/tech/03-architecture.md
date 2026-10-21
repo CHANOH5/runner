@@ -43,7 +43,7 @@
 
 | 구성 요소 | 책임 | 단계 |
 |---|---|---|
-| Core API | 인증, 사용자, 대회, 참가 등록, 기록, 예측, 소셜 | 1~ |
+| Core API | 인증, 사용자, 대회, 참가 예정(접수 상태 포함), 기록, 예측, 소셜 | 1~ |
 | Admin API | 대회 관리, 제보·신고·인증 처리 | 1~ |
 | Worker | 푸시 발송 큐, 접수 오픈 알림 스케줄, **데이터 파기 배치**, 대회 데이터 수집 | 1~ |
 | Live Service | 위치 수신, 정책 적용(P-LOC), 시청자별 데이터 가공, 실시간 배포 | 3 |
@@ -141,15 +141,29 @@ app/src/components/map/
                        │  상태 취소/연기/일정 변경 → N-06 즉시 발송 + 미발송 예약 cancelled
                        ▼
 [Worker: 매분 스캔] scheduled_at − 30분 도달한 예약
-   1) 대상 확정: 그 시점의 관심 ∪ 참가 등록자 → notifications 행 생성 (status=scheduled, 유니크로 중복 방지)
+   1) 대상 확정: 그 시점의 관심·참가 예정·접수 상태로 kind별 대상 규칙(아래 표) 적용 → notifications 행 생성 (status=scheduled, 유니크로 중복 방지)
    2) push_group_key로 같은 사용자·같은 kind·같은 시각 묶음
                        ▼
 [Worker: scheduled_at 정각] (N-02는 오픈 −10분 정각)
-   3) 발송 직전 확인: 알림 설정 / 대회 상태 / 대상 유효 / 시각 조건 → 불충족 행 cancelled
+   3) 발송 직전 확인: 알림 설정 / 대회 상태 / 대상 유효(관심·참가 예정·접수 상태를 대상 규칙으로 다시 판정) / 시각 조건 → 불충족 행 cancelled
    4) Expo Push 전송: 요청당 100건, 초당 600건 이하로 토큰 버킷 제한
    5) 실패 1분 간격 3회 재시도 → 그래도 실패면 failed (앱 내 알림은 남음), 무효 토큰은 devices.push_token 삭제
    6) 15분 뒤 receipt 확인 (Expo 권장)
 ```
+**kind별 대상 규칙** (D-019, PRD 4.10.1·7.2). "관심만" = 관심 있음 + 참가 예정 없음. 참가 예정이 있으면 관심 여부와 무관하게 **접수 상태로만** 판정한다.
+
+| kind | 대상 | SQL 조건 요약 |
+|---|---|---|
+| `reg_open_d1`, `reg_open_soon` (N-01·02) | 관심만 ∪ 참가 예정 `not_registered` | `(i.user_id IS NOT NULL AND r.id IS NULL) OR r.entry_status = 'not_registered'` |
+| `reg_close_d1` (N-03) | 관심만 ∪ 참가 예정 `not_registered` (`registered`·`missed` 제외). 참가 예정자는 고른 종목의 마감 기준 예약 행(`race_event_id`)으로, 관심만 한 사용자는 대회 단위 행으로 받는다. 유효 마감이 없으면 예약 행 자체를 만들지 않는다 | 위와 같음 + 예약 행의 `race_event_id`가 있으면 `r.race_event_id` 일치 |
+| `race_d7` (N-04) | 참가 예정 `not_registered`·`registered` (`missed` 제외). `not_registered` + 유효 접수 기간 마감이면 본문 변형, 딥링크 `berun://races/{id}` | `r.entry_status <> 'missed'` |
+| `race_d1` (N-05) | 참가 예정 `not_registered`·`registered` | `r.entry_status <> 'missed'` |
+| `race_cancelled`·`race_postponed`·`race_schedule_changed` (N-06) | 관심 ∪ 참가 예정 (접수 상태 무관), 대회일 ≥ 오늘 | 변경 없음 |
+
+- 대상 확정 쿼리는 `race_interests i FULL JOIN race_registrations r ON (user_id, race_id)`를 대회 하나에 대해 돈다. `(race_id, entry_status)` 인덱스 사용 (tech/04).
+- 접수 상태를 바꾼 시점이 대상 확정(−30분) 뒤면 행은 이미 만들어져 있으므로, 3) 발송 직전 확인에서 같은 규칙으로 다시 걸러 `cancelled` 처리한다.
+- N-04 본문 변형 판정(`not_registered` + 마감)도 발송 직전 값으로 한다 (렌더링을 발송 시점에 다시 함).
+
 - 정시성 KPI(N-02 99%)의 측정 기준은 **서버가 Expo Push에 넘긴 시각**. 대회 하나에 대상 약 10만 명까지 10분 창 안에 처리 가능 [추정 — 부하 테스트로 확인]. 넘으면 FCM/APNs 직접 발송으로 전환.
 - 발송 워커는 2개 이상, BullMQ 반복 작업 + 분산 락. 서버 시계는 NTP 동기화.
 - 공지·마케팅(N-08, `notices`): owner 승인 → 예약 시각에 대상(전체 / 마케팅 동의자) 조회 후 같은 발송 경로. 마케팅은 08:00~20:59만 (DB CHECK + 발송 시 재확인).
@@ -205,3 +219,4 @@ server/src/
 - 2026-10-21: v1 초안 작성
 - 2026-10-21: D-005~D-008 반영 (v1.1) — 실시간 방식 메모, 지도 래퍼 구조(6장), 알림 파이프라인(7장), 가입·탈퇴 외부 연동(8장), 원격 설정·강제 업데이트(9장) 추가
 - 2026-10-21: T-016 — 서버 코드 구조(9-0), 예측 모듈 구현 위치 추가
+- 2026-10-21: D-019 반영 — 알림 kind별 대상 규칙(접수 상태 기준) 표와 대상 확정·발송 직전 재판정, 설명 문장 "참가 등록" → "참가 예정"

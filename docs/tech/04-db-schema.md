@@ -276,12 +276,22 @@ CREATE TABLE race_registrations (
   verification_level smallint NOT NULL DEFAULT 0, -- 0: 자가 | 1: 배번 | 2: 공식 (P-VER)
   finish_time_sec integer,                         -- Phase 4 결과 입력
   status          text NOT NULL DEFAULT 'planned', -- planned | finished | dns | dnf
+  -- 접수 상태: 사용자가 기록하는 공식 접수 여부 (D-019, PRD 4.10.1). 참가 인증(verification_level)과 별개
+  entry_status    text NOT NULL DEFAULT 'not_registered'
+                  CHECK (entry_status IN ('not_registered', 'registered', 'missed')),
+  entry_status_updated_at timestamptz,             -- 상태를 바꾼 시각 (생성 시 기본값이면 null). KPI "7일 안 접수 완료 기록률"
+  entry_status_source text
+                  CHECK (entry_status_source IN ('form', 'return_prompt', 'race_detail', 'my_races')),
   created_at      timestamptz NOT NULL DEFAULT now(),
   updated_at      timestamptz NOT NULL DEFAULT now(),
   UNIQUE (user_id, race_id)                        -- 대회당 한 종목 (P-VER-04)
 );
 CREATE INDEX ON race_registrations (race_event_id, goal_pace_sec_per_km);
+CREATE INDEX ON race_registrations (race_id, entry_status);  -- 알림 대상 확정 (03-architecture 7장)
 ```
+> **이름 규칙 (D-019)**: `race_registrations`는 화면 용어로 **참가 예정**이다 (앱에서 "이 대회 종목에 나간다"는 표시). 실제 대회 접수 여부는 `entry_status`로 따로 기록한다. `races.registration_opens_at` 등 `races`의 `registration_*`은 **공식 접수 기간**이다. 내부 이름을 바꾸지 않는 이유는 `06-api.md` 1장 "이름 규칙" 참고.
+>
+> `entry_status` 기본값: 생성 요청에 값이 없으면 서버가 대회 유효 접수 기간이 마감(`closed`)이면 `registered`, 그 외 `not_registered`로 정한다 (PRD 4.10 3-1). 생성 시 `missed`는 받지 않는다. 생성 시 값은 `entry_status_updated_at = created_at`, `entry_status_source = 'form'`으로 기록하고, 서버 기본값을 쓴 경우만 둘 다 null로 둔다.
 > `goal_pace_sec_per_km`는 종목 거리(`race_events.distance_m`)가 다른 테이블에 있어 생성 컬럼으로 만들 수 없다. 그래서 목표 기록을 저장할 때 애플리케이션이 계산한다. 페이스 그룹 배정(F-032)에 쓰인다.
 
 ```sql
@@ -490,7 +500,7 @@ CREATE TABLE notification_settings (
 CREATE TABLE notification_schedules (
   id              uuid PRIMARY KEY,
   race_id         uuid NOT NULL REFERENCES races(id) ON DELETE CASCADE,
-  race_event_id   uuid REFERENCES race_events(id) ON DELETE CASCADE, -- 종목별 마감(N-03 참가 등록자)일 때만
+  race_event_id   uuid REFERENCES race_events(id) ON DELETE CASCADE, -- 종목별 마감(N-03 참가 예정자)일 때만
   kind            text NOT NULL,                -- reg_open_d1 | reg_open_soon | reg_close_d1 | race_d7 | race_d1
   scheduled_at    timestamptz NOT NULL,
   status          text NOT NULL DEFAULT 'pending', -- pending | materialized | done | cancelled
@@ -635,3 +645,4 @@ CREATE TABLE deletion_jobs (                     -- 파기 배치 실행 기록 
 - 2026-10-21: 관리자 빠른 입력 반영 (handoff `20261021-planner-developer-venue-map-admin-input.md`) — `races.last_verified_at`, `race_sources.fetched_at` nullable(게시 시 필수), `races.cloned_from` 추가, `races`에 게시 조건 CHECK 추가
 - 2026-10-21: API 명세(T-011) 작성 중 보완 — `auth_sessions`(refresh token 회전) 신규, `users.records_changed_at`, `run_records.category`·`updated_at`, `devices.push_token` 유니크, `admin_users` 인증 컬럼, `admin_audit_logs.memo`
 - 2026-10-21: T-016 구현 반영 — `race_courses`·`registration_verifications`를 Phase 2로 표시(PRD 9장과 정합), 구현 위치·마이그레이션 순서 메모, `predictions (user_id, created_at DESC)` 인덱스 추가, `input_snapshot` 내용 명시
+- 2026-10-21: D-019 반영 (handoff `20261021-planner-developer-entry-status.md`) — `race_registrations`에 `entry_status`(CHECK, 기본 `not_registered`)·`entry_status_updated_at`·`entry_status_source`(CHECK) 추가, `(race_id, entry_status)` 인덱스. 설명 문장의 "참가 등록" → "참가 예정". 테이블 이름은 유지 (이름 규칙 메모 추가)
