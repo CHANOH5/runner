@@ -11,7 +11,7 @@
 
 | 도메인 | 테이블 | 단계 |
 |---|---|---|
-| 계정 | `users`, `auth_identities`, `user_profiles`, `privacy_settings`, `devices` | 1 |
+| 계정 | `users`, `auth_identities`, `auth_sessions`, `user_profiles`, `privacy_settings`, `devices` | 1 |
 | 동의 | `terms_versions`, `user_consents` | 1 |
 | 대회 | `races`, `race_events`, `race_courses`, `race_sources`, `race_candidates`, `race_reports` | 1 |
 | 참가 | `race_interests`, `race_registrations`, `registration_verifications` | 1~2 |
@@ -55,6 +55,7 @@ CREATE TABLE users (
   status          text NOT NULL DEFAULT 'active', -- active | dormant | suspended | deleted
   birth_year      smallint NOT NULL,            -- 만 14세 확인용 (P-ACC-01)
   last_login_at   timestamptz,
+  records_changed_at timestamptz,              -- 기록 추가·수정·삭제 시각 → 예측 "기록이 바뀌었어요" 판단 (PRD 6.14)
   created_at      timestamptz NOT NULL DEFAULT now(),
   updated_at      timestamptz NOT NULL DEFAULT now()
 );
@@ -101,6 +102,21 @@ CREATE TABLE devices (
   app_version     text,
   last_seen_at    timestamptz
 );
+CREATE UNIQUE INDEX ON devices (push_token) WHERE push_token IS NOT NULL;
+
+-- refresh token (회전). 기기당 1개 세션, 재사용 감지 시 family 전체 폐기 (tech/06 인증)
+CREATE TABLE auth_sessions (
+  id              uuid PRIMARY KEY,
+  user_id         uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  device_id       uuid REFERENCES devices(id) ON DELETE CASCADE,
+  family_id       uuid NOT NULL,                -- 최초 로그인 시 생성, 회전해도 유지
+  token_hash      bytea NOT NULL UNIQUE,        -- refresh token SHA-256
+  expires_at      timestamptz NOT NULL,         -- 30일
+  rotated_at      timestamptz,                  -- 새 토큰으로 교체된 시각 (재사용 감지)
+  revoked_at      timestamptz,
+  created_at      timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX ON auth_sessions (user_id);
 ```
 
 ### 3.2 동의
@@ -152,9 +168,12 @@ CREATE TABLE races (
   dedupe_key      text NOT NULL,                     -- 정규화 대회명 + 대회일 (중복 경고용. 저장은 허용 — PRD 8.4)
   official_url    text,
   registration_url text,
-  last_verified_at timestamptz NOT NULL,        -- 최종 확인일 (P-RACE-02)
+  last_verified_at timestamptz,                 -- 최종 확인일 (P-RACE-02). 신규 작성 시 now(), 복제 초안은 null. 게시 시 필수
+  cloned_from     uuid REFERENCES races(id) ON DELETE SET NULL, -- 복제 원본 (PRD 8.4.4)
   created_at      timestamptz NOT NULL DEFAULT now(),
-  updated_at      timestamptz NOT NULL DEFAULT now()
+  updated_at      timestamptz NOT NULL DEFAULT now(),
+  CHECK (publish_status <> 'published'
+         OR (official_url IS NOT NULL AND last_verified_at IS NOT NULL)) -- 게시 조건 일부. 종목·출처·도로 대회 한정(D-013)은 서버 검사
 );
 CREATE INDEX ON races (race_date);
 CREATE INDEX ON races (region_code, race_date);
@@ -197,7 +216,7 @@ CREATE TABLE race_sources (
   external_id     text,                         -- 출처 쪽 식별자 (예: 집계 사이트 글 번호)
   is_primary      boolean NOT NULL DEFAULT false, -- 앱에 "출처"로 표시할 대표 출처 (P-RACE-02)
   content_hash    text,                         -- 마지막으로 가져온 본문 해시 (변경 감지용, 원문은 저장하지 않음)
-  fetched_at      timestamptz NOT NULL,
+  fetched_at      timestamptz,                  -- 확인 일시. null = 아직 확인 안 함 (복제 초안). 게시 시 대표 출처는 필수
   last_checked_at timestamptz,
   last_changed_at timestamptz
 );
@@ -282,10 +301,12 @@ CREATE TABLE run_records (
   distance_m      integer NOT NULL,
   duration_sec    integer NOT NULL,
   run_date        date NOT NULL,
+  category        text NOT NULL,                -- 5k | 10k | half | full | other (PRD 3.3)
   kind            text NOT NULL,                -- race | training
   race_registration_id uuid REFERENCES race_registrations(id) ON DELETE SET NULL,
   title           text,
-  created_at      timestamptz NOT NULL DEFAULT now()
+  created_at      timestamptz NOT NULL DEFAULT now(),
+  updated_at      timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX ON run_records (user_id, run_date DESC);
 
@@ -551,6 +572,11 @@ CREATE TABLE admin_users (
   id              uuid PRIMARY KEY,
   email           text NOT NULL UNIQUE,
   role            text NOT NULL,                 -- owner | operator | viewer
+  password_hash   text NOT NULL,                 -- argon2id
+  totp_secret_enc bytea NOT NULL,                -- TOTP 필수 (PRD 8.2)
+  failed_login_count smallint NOT NULL DEFAULT 0,
+  locked_until    timestamptz,                   -- 5회 실패 시 15분
+  disabled_at     timestamptz,
   mfa_enabled     boolean NOT NULL DEFAULT true
 );
 
@@ -560,6 +586,7 @@ CREATE TABLE admin_audit_logs (
   action          text NOT NULL,
   target_type     text,
   target_id       text,
+  memo            text,                          -- 예: "주최 측 요청", 복제 원본 id (PRD 8.4)
   created_at      timestamptz NOT NULL DEFAULT now()
 );
 
@@ -599,3 +626,5 @@ CREATE TABLE deletion_jobs (                     -- 파기 배치 실행 기록 
 - 2026-10-21: v1 초안 작성
 - 2026-10-21: T-012 반영 — `races`에 `publish_status`, `race_type`, `registration_method`, `dedupe_key` 추가 / `race_events`에 종목별 접수 기간 추가 / `race_sources`에 출처 종류·대표 출처·변경 감지 컬럼 추가 / `race_candidates`(수집 검수 대기열) 신규. 근거: `05-race-data-sourcing.md` 5장
 - 2026-10-21: Phase 1 PRD 요청 반영 (handoff `20261021-planner-developer-phase1-prd-questions.md` B) — `races`: `venue_address`, `registration_opens_time_known`, `course_url` 추가, `dedupe_key` 유니크 해제(중복은 경고만) / `race_events.category` / `user_profiles.nickname_changed_at` + `lower(nickname)` 유니크 / `race_reports` 처리 컬럼 / `auth_identities.revoke_token_enc` / `notifications` 확장 + `notification_schedules`, `notices`, `social_unlink_jobs`, `account_deletion_stats`, `app_configs` 신규 / 파기 배치 3건 추가
+- 2026-10-21: 관리자 빠른 입력 반영 (handoff `20261021-planner-developer-venue-map-admin-input.md`) — `races.last_verified_at`, `race_sources.fetched_at` nullable(게시 시 필수), `races.cloned_from` 추가, `races`에 게시 조건 CHECK 추가
+- 2026-10-21: API 명세(T-011) 작성 중 보완 — `auth_sessions`(refresh token 회전) 신규, `users.records_changed_at`, `run_records.category`·`updated_at`, `devices.push_token` 유니크, `admin_users` 인증 컬럼, `admin_audit_logs.memo`
