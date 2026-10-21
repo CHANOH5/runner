@@ -1,0 +1,4 @@
+# 루트 .prettierignore와 같음 — server/에서 prettier를 실행할 때도 적용되게
+dist/
+coverage/
+src/db/migrations/meta/

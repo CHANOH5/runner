@@ -76,7 +76,7 @@ describe('BullMQ 알림 워커', () => {
       const job = await enqueueRaceUpdated(queue, { raceId: race.id, notify: 'race_postponed' });
       const result: unknown = await job.waitUntilFinished(events, 10_000);
       expect(result).toMatchObject({ updated: { notified: 1 }, sent: { sent: 1 } });
-      expect(sent.at(-1)?.title).toBe('워커 마라톤이 연기됐어요');
+      expect(sent.at(-1)?.title).toBe('워커 마라톤 대회가 연기됐어요');
     } finally {
       await worker.close();
       await events.close();

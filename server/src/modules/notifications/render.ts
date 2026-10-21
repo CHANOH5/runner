@@ -1,14 +1,15 @@
 import { kstDate, kstHourMinute } from '../../lib/time.js';
-import type { DeliverableKind } from './kinds.js';
+import type { DeliverableKind, ReportResultKind } from './kinds.js';
 
-/** 알림 문구 (PRD 7.2 초안). 제목 최대 30자, 본문 최대 60자 — 넘치면 대회명을 20자로 줄이고 "…" */
+/**
+ * 알림 문구 (PRD v1.7 7.2). 제목 최대 30자, 본문 최대 60자.
+ * 넘치면 대회명만 줄인다: 대회명 최대 길이 = 상한 − 고정 문구 길이 ("…"도 1자로 센다).
+ */
 export const TITLE_MAX = 30;
 export const BODY_MAX = 60;
-const NAME_SHORT = 20;
-const NAME_MIN = 8;
 
 export type RenderInput = {
-  kind: DeliverableKind;
+  kind: DeliverableKind | ReportResultKind;
   race: { id: string; name: string; registrationMethod: string };
   /** 유효 오픈 시각과 시각 확정 여부 */
   opensAt: Date | null;
@@ -26,6 +27,8 @@ export type RenderInput = {
   } | null;
   /** N-06c: "{바뀐 항목}: {새 값}" */
   changeSummary?: string | null;
+  /** N-07b: 반려 사유 문구 */
+  rejectReasonText?: string | null;
 };
 
 export type Rendered = { title: string; body: string; deepLink: string };
@@ -55,24 +58,6 @@ export function formatDuration(sec: number): string {
 /** 페이스 표기 m'ss" (PRD 3.2) */
 export function formatPace(secPerKm: number): string {
   return `${Math.floor(secPerKm / 60)}'${pad(secPerKm % 60)}"`;
-}
-
-/** 받침 있는 글자인지 (한글은 종성, 숫자·영문은 읽는 소리 기준) */
-function hasFinalConsonant(word: string): boolean | null {
-  const ch = [...word.replace(/[\s…)\]"'”]+$/u, '')].at(-1);
-  if (!ch) return null;
-  const code = ch.charCodeAt(0);
-  if (code >= 0xac00 && code <= 0xd7a3) return (code - 0xac00) % 28 !== 0;
-  // 영·일·삼·육·칠·팔은 받침 있음, 이·사·오·구는 없음
-  if (/[0-9]/.test(ch)) return '013678'.includes(ch);
-  if (/[a-z]/i.test(ch)) return 'lmnr'.includes(ch.toLowerCase());
-  return null;
-}
-
-/** 이/가 */
-export function josaIGa(word: string): string {
-  const f = hasFinalConsonant(word);
-  return f === null ? '이(가)' : f ? '이' : '가';
 }
 
 function linkFor(input: RenderInput, kind: 'race' | 'register' | 'strategy'): string {
@@ -158,13 +143,13 @@ function renderWith(input: RenderInput, name: string): Rendered {
     }
     case 'race_cancelled':
       return {
-        title: `${name}${josaIGa(name)} 취소됐어요`,
+        title: `${name} 대회가 취소됐어요`,
         body: '자세한 내용은 공식 홈페이지를 확인해주세요. 환불은 주최 측에 문의해주세요.',
         deepLink: linkFor(input, 'race'),
       };
     case 'race_postponed':
       return {
-        title: `${name}${josaIGa(name)} 연기됐어요`,
+        title: `${name} 대회가 연기됐어요`,
         body: '새 일정은 공식 홈페이지를 확인해주세요.',
         deepLink: linkFor(input, 'race'),
       };
@@ -174,43 +159,63 @@ function renderWith(input: RenderInput, name: string): Rendered {
         body: `${input.changeSummary ? `${input.changeSummary}. ` : ''}공식 홈페이지에서 한 번 더 확인해주세요.`,
         deepLink: linkFor(input, 'race'),
       };
+    case 'report_applied':
+      return {
+        title: '제보가 반영됐어요',
+        body: `${name} 정보를 고쳤어요. 알려주셔서 감사해요.`,
+        deepLink: linkFor(input, 'race'),
+      };
+    case 'report_rejected':
+      return {
+        title: '제보를 확인했어요',
+        body: `${name}: ${input.rejectReasonText ?? ''}. 다른 점이 있으면 다시 알려주세요.`,
+        deepLink: linkFor(input, 'race'),
+      };
   }
 }
 
 const fits = (r: Rendered) => len(r.title) <= TITLE_MAX && len(r.body) <= BODY_MAX;
 
-/**
- * 넘치면 대회명을 20자 + "…"로 줄인다 (PRD 7.2). 그래도 넘치면(예: N-01 제목은 고정 문구가 12자라
- * 20자 이름으로 33자) 들어갈 때까지 더 줄인다 — 최소 8자. 본문 고정 문구가 60자를 넘는 경우(N-06a)는 그대로 둔다.
- */
+/** 대회명이 들어가는 칸마다 (상한 − 고정 문구 길이) 중 가장 작은 값 = 대회명 최대 길이 */
+function maxNameLength(input: RenderInput): number {
+  const empty = renderWith(input, '');
+  const probe = renderWith(input, 'X');
+  const limits: number[] = [];
+  if (probe.title !== empty.title) limits.push(TITLE_MAX - len(empty.title));
+  if (probe.body !== empty.body) limits.push(BODY_MAX - len(empty.body));
+  return limits.length ? Math.min(...limits) : Infinity;
+}
+
 export function render(input: RenderInput): Rendered {
   const full = renderWith(input, input.race.name);
   if (fits(full)) return full;
+  const max = maxNameLength(input);
   const chars = [...input.race.name];
-  let best = full;
-  for (let n = Math.min(NAME_SHORT, chars.length - 1); n >= NAME_MIN; n--) {
-    best = renderWith(input, `${chars.slice(0, n).join('')}…`);
-    if (fits(best)) return best;
-  }
-  return best;
+  if (chars.length <= max) return full; // 고정 문구 자체가 상한을 넘는 경우 — 대회명은 줄이지 않는다
+  return renderWith(input, `${chars.slice(0, Math.max(max - 1, 1)).join('')}…`);
 }
 
 /**
  * 묶음 푸시 (PRD 7.1): 같은 사용자·같은 종류·같은 예약 시각 2건 이상 → 푸시 1건, 탭하면 S-011.
- * 문구는 PRD에 예시 하나("내일 접수가 시작되는 관심 대회 3개")만 있어 나머지는 초안 [미정].
+ * 문구는 PRD v1.7 7.1. N-02는 오픈 시각 미정 대회가 하나라도 섞이면 "오늘 접수가 시작되는"
+ * (10분 뒤가 아닐 수 있으므로).
  */
 const BUNDLE_TITLES: Record<DeliverableKind, (n: number) => string> = {
-  reg_open_d1: (n) => `내일 접수가 시작되는 관심 대회 ${n}개`,
-  reg_open_soon: (n) => `곧 접수가 열리는 대회 ${n}개`,
+  reg_open_d1: (n) => `내일 접수가 시작되는 대회 ${n}개`,
+  reg_open_soon: (n) => `10분 뒤 접수가 열리는 대회 ${n}개`,
   reg_close_d1: (n) => `내일 접수가 마감되는 대회 ${n}개`,
-  race_d7: (n) => `일주일 남은 대회 ${n}개`,
+  race_d7: (n) => `일주일 뒤 열리는 대회 ${n}개`,
   race_d1: (n) => `내일 열리는 대회 ${n}개`,
   race_cancelled: (n) => `취소된 대회 ${n}개`,
   race_postponed: (n) => `연기된 대회 ${n}개`,
   race_schedule_changed: (n) => `일정이 바뀐 대회 ${n}개`,
 };
 
-export function renderBundle(kind: DeliverableKind, raceNames: string[]): Rendered {
+export function renderBundle(
+  kind: DeliverableKind,
+  raceNames: string[],
+  opts: { anyOpensTimeUnknown?: boolean } = {},
+): Rendered {
   const names: string[] = [];
   for (const name of raceNames) {
     const next = [...names, name].join(', ');
@@ -220,7 +225,10 @@ export function renderBundle(kind: DeliverableKind, raceNames: string[]): Render
   }
   const rest = raceNames.length - names.length;
   return {
-    title: BUNDLE_TITLES[kind](raceNames.length),
+    title:
+      kind === 'reg_open_soon' && opts.anyOpensTimeUnknown
+        ? `오늘 접수가 시작되는 대회 ${raceNames.length}개`
+        : BUNDLE_TITLES[kind](raceNames.length),
     body: `${names.join(', ')}${rest > 0 ? ` 외 ${rest}개` : ''}`,
     deepLink: 'berun://notifications',
   };

@@ -5,7 +5,6 @@ import {
   BODY_MAX,
   formatDuration,
   formatPace,
-  josaIGa,
   render,
   renderBundle,
   TITLE_MAX,
@@ -98,40 +97,64 @@ describe('render (PRD 7.2)', () => {
     ).toBe('즐겁게 완주하세요!');
   });
 
-  it('N-06: 이/가 조사, 일정 변경 요약', () => {
-    expect(render({ ...base, kind: 'race_cancelled' }).title).toBe('2027 서울마라톤이 취소됐어요');
+  it('N-06: "{대회명} 대회가 취소됐어요/연기됐어요" (조사 문제 없음), 일정 변경 요약', () => {
+    expect(render({ ...base, kind: 'race_cancelled' }).title).toBe(
+      '2027 서울마라톤 대회가 취소됐어요',
+    );
     expect(
       render({ ...base, kind: 'race_postponed', race: { ...base.race, name: '부산 바다 10K' } })
         .title,
-    ).toBe('부산 바다 10K가 연기됐어요');
+    ).toBe('부산 바다 10K 대회가 연기됐어요');
     expect(
       render({ ...base, kind: 'race_schedule_changed', changeSummary: '대회일: 3월 22일' }).body,
     ).toBe('대회일: 3월 22일. 공식 홈페이지에서 한 번 더 확인해주세요.');
   });
 
-  it('길면 대회명을 20자 + …로 줄인다 (제목 30자, 본문 60자)', () => {
+  it('N-07: 제보 반영·반려 (앱 내만)', () => {
+    expect(render({ ...base, kind: 'report_applied' })).toMatchObject({
+      title: '제보가 반영됐어요',
+      body: '2027 서울마라톤 정보를 고쳤어요. 알려주셔서 감사해요.',
+    });
+    expect(
+      render({ ...base, kind: 'report_rejected', rejectReasonText: '공식 정보와 같아요' }).body,
+    ).toBe('2027 서울마라톤: 공식 정보와 같아요. 다른 점이 있으면 다시 알려주세요.');
+  });
+
+  it('길면 대회명만 줄인다: 최대 길이 = 상한 − 고정 문구 ("…" 1자 포함), N-01·N-03은 18자', () => {
     const long = '제1회 아주아주 긴 이름을 가진 국제 하프마라톤 대회 2027';
-    const r = render({ ...base, race: { ...base.race, name: long } });
-    expect([...r.title].length).toBeLessThanOrEqual(TITLE_MAX);
-    // 20자로 줄여도 33자라 들어갈 때까지 더 줄인다 (고정 문구 12자 → 이름 17자 + …)
-    expect(r.title).toBe(`내일 ${[...long].slice(0, 17).join('')}… 접수가 시작돼요`);
-    // N-03도 20자로는 34자 → 더 줄인다
+    const open = render({ ...base, race: { ...base.race, name: long } });
+    expect(open.title).toBe(`내일 ${[...long].slice(0, 17).join('')}… 접수가 시작돼요`);
+    expect([...open.title].length).toBe(TITLE_MAX);
     const close = render({ ...base, kind: 'reg_close_d1', race: { ...base.race, name: long } });
-    expect([...close.title].length).toBeLessThanOrEqual(TITLE_MAX);
-    expect(close.title).toMatch(/^제1회 아주아주.*… 접수가 내일 마감돼요$/);
-    // 짧은 이름은 줄이지 않는다
+    expect(close.title).toBe(`${[...long].slice(0, 17).join('')}… 접수가 내일 마감돼요`);
+    // 본문에 대회명이 들어가는 N-07a는 본문 상한 기준
+    const applied = render({
+      ...base,
+      kind: 'report_applied',
+      race: { ...base.race, name: long.repeat(2) },
+    });
+    expect([...applied.body].length).toBe(BODY_MAX);
+    // 짧은 이름은 그대로, 18자 이름도 그대로
     expect(render({ ...base, kind: 'reg_close_d1' }).title).toBe(
       '2027 서울마라톤 접수가 내일 마감돼요',
     );
-    expect([...r.body].length).toBeLessThanOrEqual(BODY_MAX);
+    const name18 = '가'.repeat(18);
+    expect(render({ ...base, race: { ...base.race, name: name18 } }).title).toBe(
+      `내일 ${name18} 접수가 시작돼요`,
+    );
   });
 
   it('묶음 푸시: 제목 n개, 본문은 60자 안에서 대회명 + 외 n개, 탭하면 알림 목록', () => {
     expect(renderBundle('reg_open_d1', ['A 마라톤', 'B 하프', 'C 10K'])).toEqual({
-      title: '내일 접수가 시작되는 관심 대회 3개',
+      title: '내일 접수가 시작되는 대회 3개',
       body: 'A 마라톤, B 하프, C 10K',
       deepLink: 'berun://notifications',
     });
+    expect(renderBundle('reg_open_soon', ['A', 'B']).title).toBe('10분 뒤 접수가 열리는 대회 2개');
+    expect(renderBundle('reg_open_soon', ['A', 'B'], { anyOpensTimeUnknown: true }).title).toBe(
+      '오늘 접수가 시작되는 대회 2개',
+    );
+    expect(renderBundle('race_d7', ['A', 'B']).title).toBe('일주일 뒤 열리는 대회 2개');
     const many = Array.from({ length: 8 }, (_, i) => `아주 긴 이름의 대회 ${i}`);
     const b = renderBundle('race_d1', many);
     expect([...b.body].length).toBeLessThanOrEqual(BODY_MAX);
@@ -139,22 +162,12 @@ describe('render (PRD 7.2)', () => {
   });
 });
 
-describe('표기·조사·야간', () => {
+describe('표기·야간', () => {
   it('기록·페이스 표기 (PRD 3.2)', () => {
     expect([formatDuration(7080), formatDuration(3300), formatPace(336)]).toEqual([
       '1:58:00',
       '55:00',
       `5'36"`,
-    ]);
-  });
-  it('이/가', () => {
-    expect(['서울마라톤', '부산 10K', '대구 하프', '제주 2', '춘천 3', '…'].map(josaIGa)).toEqual([
-      '이',
-      '가',
-      '가',
-      '가',
-      '이',
-      '이(가)',
     ]);
   });
   it('야간 21:00~07:59 KST: 마케팅만 막고 서비스 알림은 보낸다 (P-NOTI-05)', () => {

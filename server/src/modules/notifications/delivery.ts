@@ -41,7 +41,6 @@ export const RETRY_DELAY_MS = 60 * 1000;
 /** 워커가 집어 간 알림의 임대 시간. 워커가 죽으면 이 시간 뒤 다른 워커가 다시 집는다 */
 export const LEASE_MS = 5 * 60 * 1000;
 const CLAIM_LIMIT = 1000;
-const DAY_MS = 24 * 60 * 60 * 1000;
 const SCHEDULE_CLAIM_LIMIT = 50;
 
 export type DeliveryDeps = {
@@ -65,6 +64,7 @@ export type NotificationPayload = {
 };
 
 type NotificationRow = typeof notifications.$inferSelect;
+type CancelReason = 'expired' | 'not_eligible';
 type RaceRow = typeof races.$inferSelect;
 type EventRow = typeof raceEvents.$inferSelect;
 type RegistrationRow = typeof raceRegistrations.$inferSelect;
@@ -224,13 +224,16 @@ async function prepare(
   row: NotificationRow,
   ctx: SendContext,
   now: Date,
-): Promise<Rendered | null> {
+): Promise<Rendered | { cancel: CancelReason }> {
   const kind = row.kind as DeliverableKind;
   const payload = row.payload as NotificationPayload;
   const race = row.raceId ? ctx.races.get(row.raceId) : undefined;
-  if (!race || race.publishStatus !== 'published' || !canSendAt(kind, now)) return null;
-  if (isScheduledKind(kind) && (race.status === 'cancelled' || race.status === 'finished'))
-    return null;
+  if (!race || race.publishStatus !== 'published' || !canSendAt(kind, now)) {
+    return { cancel: 'not_eligible' };
+  }
+  if (isScheduledKind(kind) && (race.status === 'cancelled' || race.status === 'finished')) {
+    return { cancel: 'not_eligible' };
+  }
 
   const events = ctx.events.get(race.id) ?? [];
   const window = effectiveWindow(race, events);
@@ -252,21 +255,21 @@ async function prepare(
         );
       case 'reg_close_d1': // "내일 마감돼요" → 마감 전날까지
         return closesAt !== null && now < closesAt && today < kstDate(closesAt);
-      case 'race_d7': // "일주일 남았어요" → 예약 시각부터 하루 안
-        return today < race.raceDate && now.getTime() - row.scheduledAt.getTime() < DAY_MS;
+      case 'race_d7': // "일주일 남았어요" → D-7 당일(KST) 23:59까지 (PRD v1.7)
+        return today < race.raceDate && today <= kstDate(row.scheduledAt);
       case 'race_d1': // "내일은" → 대회 전날까지
         return today < race.raceDate;
-      default:
+      default: // N-06은 대회일까지 (PRD v1.7)
         return race.raceDate >= today;
     }
   })();
-  if (!timeOk) return null;
+  if (!timeOk) return { cancel: 'expired' };
 
   // ①③ 설정·대상·사용자 상태 (대상 확정 때와 같은 쿼리)
   const still = await db.execute(
     audienceSql({ raceId: race.id, kind, raceEventId: payload.raceEventId ?? null }, row.userId),
   );
-  if (still.length === 0) return null;
+  if (still.length === 0) return { cancel: 'not_eligible' };
 
   return render({
     kind,
@@ -288,10 +291,15 @@ type Group = {
   items: { row: NotificationRow; rendered: Rendered }[];
 };
 
+/**
+ * sent: 푸시 전달 / failed: 재시도 끝에 실패 / cancelled: 발송 직전 확인 불충족(설정·대상·대회 상태)
+ * expired: 유효 구간이 지나 보내지 않음 — 실패와 따로 센다 (PRD v1.7, A-002). 행에는 last_error로 사유를 남긴다
+ */
 export type SendResult = {
   sent: number;
   failed: number;
   cancelled: number;
+  expired: number;
   retried: number;
   noDevice: number;
 };
@@ -306,7 +314,14 @@ export type SendResult = {
  */
 export async function sendDue(deps: DeliveryDeps): Promise<SendResult> {
   const now = deps.clock();
-  const result: SendResult = { sent: 0, failed: 0, cancelled: 0, retried: 0, noDevice: 0 };
+  const result: SendResult = {
+    sent: 0,
+    failed: 0,
+    cancelled: 0,
+    expired: 0,
+    retried: 0,
+    noDevice: 0,
+  };
   const kinds = [...SCHEDULED_KINDS, ...RACE_CHANGE_KINDS];
 
   const claimed = await deps.db.execute<{ id: string }>(sql`
@@ -343,11 +358,11 @@ export async function sendDue(deps: DeliveryDeps): Promise<SendResult> {
 
   // 발송 직전 확인 + 문구
   const groups = new Map<string, Group>();
-  const cancelled: string[] = [];
+  const cancelled: Record<CancelReason, string[]> = { expired: [], not_eligible: [] };
   for (const row of rows) {
     const rendered = await prepare(deps.db, row, ctx, now);
-    if (!rendered) {
-      cancelled.push(row.id);
+    if ('cancel' in rendered) {
+      cancelled[rendered.cancel].push(row.id);
       continue;
     }
     const key = row.pushGroupKey ?? row.id;
@@ -360,13 +375,16 @@ export async function sendDue(deps: DeliveryDeps): Promise<SendResult> {
     g.items.push({ row, rendered });
     groups.set(key, g);
   }
-  if (cancelled.length) {
+  for (const reason of ['expired', 'not_eligible'] as const) {
+    const ids = cancelled[reason];
+    if (ids.length === 0) continue;
     await deps.db
       .update(notifications)
-      .set({ status: 'cancelled' })
-      .where(inArray(notifications.id, cancelled));
-    result.cancelled += cancelled.length;
+      .set({ status: 'cancelled', lastError: reason })
+      .where(inArray(notifications.id, ids));
   }
+  result.cancelled += cancelled.not_eligible.length;
+  result.expired += cancelled.expired.length;
 
   // 기기
   const userIds = [...new Set([...groups.values()].map((g) => g.userId))];
@@ -395,6 +413,11 @@ export async function sendDue(deps: DeliveryDeps): Promise<SendResult> {
         ? renderBundle(
             g.kind,
             g.items.map((i) => ctx.races.get(i.row.raceId!)?.name ?? ''),
+            {
+              anyOpensTimeUnknown: g.items.some(
+                (i) => ctx.races.get(i.row.raceId!)?.registrationOpensTimeKnown === false,
+              ),
+            },
           )
         : g.items[0]!.rendered;
     const notificationIds = g.items.map((i) => i.row.id);
