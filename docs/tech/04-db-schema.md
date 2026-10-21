@@ -13,14 +13,19 @@
 |---|---|---|
 | 계정 | `users`, `auth_identities`, `auth_sessions`, `user_profiles`, `privacy_settings`, `devices` | 1 |
 | 동의 | `terms_versions`, `user_consents` | 1 |
-| 대회 | `races`, `race_events`, `race_courses`, `race_sources`, `race_candidates`, `race_reports` | 1 |
-| 참가 | `race_interests`, `race_registrations`, `registration_verifications` | 1~2 |
+| 대회 | `races`, `race_events`, `race_sources`, `race_candidates`, `race_reports` / `race_courses` | 1 / 2 (코스 경로는 PRD 9장에 따라 Phase 2) |
+| 참가 | `race_interests`, `race_registrations` / `registration_verifications` | 1 / 2 (참가 인증은 Phase 2) |
 | 기록·예측 | `run_records`, `predictions` | 1 |
 | 소셜 | `friendships`, `blocks`, `pace_groups`, `pace_group_members`, `meetups`, `reports` | 2 |
 | 라이브 | `location_consents`, `live_sessions`, `live_session_viewers`, `cheer_links`, `location_points`, `location_access_logs`, `cheers` | 3 |
 | 알림 | `notification_settings`, `notification_schedules`, `notifications`, `notices` | 1 |
 | 결제 | `subscriptions` | 4 |
 | 운영 | `admin_users`, `admin_audit_logs`, `deletion_jobs`, `social_unlink_jobs`, `account_deletion_stats`, `app_configs` | 1 |
+
+> **구현 (T-016)**: Phase 1 테이블 27개는 `server/src/db/schema/`(Drizzle)와 `server/src/db/migrations/`에 있다. 이 문서와 코드가 다르면 코드에 맞춰 이 문서를 고친다.
+> - 마이그레이션: `0000` PostGIS 확장 → `0001` 테이블(drizzle-kit 생성) → `0002` 공간 컬럼(raw SQL, `races.venue_point`). 공간 컬럼은 Drizzle 스키마에 두지 않는다.
+> - UUID v7은 애플리케이션이 만든다 (PostgreSQL 16에 `uuidv7()` 없음). 제약·인덱스 이름은 코드에 명시했다 (예: `user_profiles_nickname_lower_key`).
+> - 이 문서 SQL에 없던 인덱스 1개 추가: `predictions (user_id, created_at DESC)` — 최근 예측 목록 정렬 (tech/06 4장).
 
 ## 2. ERD (핵심 관계)
 
@@ -320,10 +325,11 @@ CREATE TABLE predictions (
   range_max_sec   integer NOT NULL,
   confidence      text NOT NULL,                -- high | medium | low (P-PRED-02)
   model_version   text NOT NULL,                -- "riegel-1.06-v1"
-  input_snapshot  jsonb NOT NULL,               -- 사용한 기록과 보정값
+  input_snapshot  jsonb NOT NULL,               -- 사용한 기록·가중치, 예측일, 신뢰도 사유, 범위 단위 등 (server modules/predictions/service.ts PredictionSnapshot)
   splits          jsonb,                        -- 구간 스플릿
   created_at      timestamptz NOT NULL DEFAULT now()
 );
+CREATE INDEX ON predictions (user_id, created_at DESC);
 ```
 
 ### 3.6 소셜 (Phase 2)
@@ -628,3 +634,4 @@ CREATE TABLE deletion_jobs (                     -- 파기 배치 실행 기록 
 - 2026-10-21: Phase 1 PRD 요청 반영 (handoff `20261021-planner-developer-phase1-prd-questions.md` B) — `races`: `venue_address`, `registration_opens_time_known`, `course_url` 추가, `dedupe_key` 유니크 해제(중복은 경고만) / `race_events.category` / `user_profiles.nickname_changed_at` + `lower(nickname)` 유니크 / `race_reports` 처리 컬럼 / `auth_identities.revoke_token_enc` / `notifications` 확장 + `notification_schedules`, `notices`, `social_unlink_jobs`, `account_deletion_stats`, `app_configs` 신규 / 파기 배치 3건 추가
 - 2026-10-21: 관리자 빠른 입력 반영 (handoff `20261021-planner-developer-venue-map-admin-input.md`) — `races.last_verified_at`, `race_sources.fetched_at` nullable(게시 시 필수), `races.cloned_from` 추가, `races`에 게시 조건 CHECK 추가
 - 2026-10-21: API 명세(T-011) 작성 중 보완 — `auth_sessions`(refresh token 회전) 신규, `users.records_changed_at`, `run_records.category`·`updated_at`, `devices.push_token` 유니크, `admin_users` 인증 컬럼, `admin_audit_logs.memo`
+- 2026-10-21: T-016 구현 반영 — `race_courses`·`registration_verifications`를 Phase 2로 표시(PRD 9장과 정합), 구현 위치·마이그레이션 순서 메모, `predictions (user_id, created_at DESC)` 인덱스 추가, `input_snapshot` 내용 명시

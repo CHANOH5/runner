@@ -7,7 +7,7 @@
 
 > 표기
 > - `[미정]`, `[확인 필요]`는 공통 규칙과 같다.
-> - 스키마는 **Zod** 기준으로 쓴다. 실제 코드는 앱·서버가 함께 쓰는 `packages/contracts`에 둔다 (tech/02, PRD 3.5). 여기 적은 Zod는 명세용 의사 코드다.
+> - 스키마는 **Zod** 기준으로 쓴다. 실제 코드는 앱·서버가 함께 쓰는 `packages/shared`(`@berun/shared`)에 둔다 (tech/02, PRD 3.5). 여기 적은 Zod는 명세용 의사 코드다.
 
 ---
 
@@ -80,7 +80,7 @@ const ApiError = z.object({
     details: z.record(z.unknown()).optional(),
     fieldErrors: z.array(z.object({   // 400 VALIDATION_FAILED일 때만
       path: z.string(),               // "goalTimeSec", "events[2].distanceM"
-      code: z.string(),               // "too_short" | "out_of_range" | "invalid_format" | ...
+      code: z.string(),               // required | too_short | too_long | too_few | too_many | out_of_range | invalid_format | invalid_value | invalid_type | unknown_field | (API별) not_found · not_eligible
     })).optional(),
   }),
   requestId: z.string(),              // 로그 추적용 (응답 헤더 X-Request-Id와 같음)
@@ -91,7 +91,7 @@ const ApiError = z.object({
 ### 3.2 코드
 | HTTP | code | 언제 | 앱 처리 (PRD) |
 |---|---|---|---|
-| 400 | `VALIDATION_FAILED` | Zod 검증 실패 | 입력란 아래 메시지 (3.5) |
+| 400 | `VALIDATION_FAILED` | Zod 검증 실패. 잘못된 JSON·본문 64KB 초과 등 Fastify 요청 오류도 이 코드 (`details.reason`) | 입력란 아래 메시지 (3.5) |
 | 401 | `UNAUTHENTICATED` | 토큰 없음·만료·위조 | refresh 1회 → 실패 시 S-002 (3.4) |
 | 401 | `REFRESH_INVALID` / `REFRESH_REUSED` | refresh 실패 | S-002 "다시 로그인해주세요" |
 | 401 | `SIGNUP_TOKEN_EXPIRED` | 가입 토큰 30분 경과 | S-002 "시간이 지나 처음부터…" (4.1) |
@@ -689,13 +689,15 @@ const PredictionReq = z.object({
     z.object({ type: z.literal('registration'), registrationId: Id }),                           // 내 참가 대회 (거리·제한 시간 사용)
     z.object({ type: z.literal('race_event'), raceEventId: Id }),                                // preview 전용: S-023에서 등록 전
   ]),
-  recordIds: z.array(Id).min(1).max(5).nullable(),      // null = 자동 선택. 값 있으면 고른 기록만, 같은 가중치 (5.2)
+  recordIds: z.array(Id).min(1).nullable(),             // null = 자동 선택. 값 있으면 고른 기록만, 같은 가중치 (5.2). 6개 이상은 422 LIMIT_EXCEEDED (스키마 max 없음)
 });
 // 응답: Prediction (preview는 id·createdAt null)
 // 에러: 422 TARGET_DISTANCE_UNSUPPORTED (registration·race_event 대상 거리가 3,000~42,195m 밖. distance 대상은 스키마에서 400),
-//       422 NO_ELIGIBLE_RECORDS, 400 (recordIds 중 eligible 아닌 것 → fieldErrors), 422 LIMIT_EXCEEDED(resource=prediction_records, limit=5)
+//       422 NO_ELIGIBLE_RECORDS, 400 (recordIds 중 내 기록이 아님 → fieldErrors code `not_found`, eligible 아님 → `not_eligible`), 422 LIMIT_EXCEEDED(resource=prediction_records, limit=5)
+//       POST /me/predictions에 target.type = race_event → 400 (fieldErrors path `target.type`, code `invalid_value`)
 ```
-- 거리 검사는 기록 조회보다 먼저 한다 (미지원 거리면 기록이 없어도 `TARGET_DISTANCE_UNSUPPORTED`).
+- 검사 순서: 대상(남의 등록·초안 대회 404, 숨김 410, 거리) → 기록 개수 한도 → 기록 선택 검증 → 계산. 미지원 거리면 기록이 없어도 `TARGET_DISTANCE_UNSUPPORTED`.
+- `NO_ELIGIBLE_RECORDS.details.reason`: 3,000~42,195m 기록이 있지만 모두 365일 초과면 `all_older_than_365d`, 그 밖은 `none`.
 - 계산은 서버에서만 한다 (PRD 5장). 같은 입력·같은 날짜 → 같은 결과 (결정적). 예측일 = 요청 시각의 KST 날짜.
 - `GET /me/predictions` 응답 항목은 `Prediction`에서 `splits`·`usedRecords`를 뺀 요약형 (`PredictionSummary`).
 
@@ -1005,3 +1007,4 @@ v1.1에서 PRD v1.2 대조 요청(handoff `20261021-planner-developer-api-v1-prd
 ## 변경 이력
 - 2026-10-21: v1 초안 작성 (T-011). PRD v1.1 기준 앱 API·관리자 API·에러·페이지네이션·요청 제한. 스키마 보완은 `04-db-schema.md` 변경 이력 참조
 - 2026-10-21: v1.1 — PRD v1.2 대조 반영 (handoff `20261021-planner-developer-api-v1-prd-v1.2-gaps.md`). 공지 상세: 웹뷰 URL 삭제, `link` 필드, 내린 공지 410 `NOTICE_WITHDRAWN`. 예측 미지원 거리: 422 `TARGET_DISTANCE_UNSUPPORTED`, strategy `predictionUnavailableReason`, `RegistrationBrief.predictionSupported`·`eventDistanceM`, 스플릿 거리 무제한. 추천 대회 조건 명시. 유효 접수 기간 규칙(종목 기간 집계, 마감 없음 = 대회 전날까지, 참가자 N-03 종목 마감). 관리자 종목별 접수 기간 검증. `[PRD 변경 대기]`·`[PRD 확인]` 표시 정리
+- 2026-10-21: T-016 구현 반영 — 공유 패키지 이름 `packages/shared`, 예측 `recordIds` 6개 이상은 스키마 400이 아니라 422 `LIMIT_EXCEEDED`로 통일, 예측 검사 순서·`NO_ELIGIBLE_RECORDS` 사유 판정·`recordIds` fieldErrors 코드, fieldErrors 코드 목록, Fastify 요청 오류 매핑. 구현 엔드포인트: `GET /health`(인증 없음, `/v1` 밖), `POST /me/predictions`, `POST /me/predictions/preview`
