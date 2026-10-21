@@ -7,7 +7,7 @@ import {
   type RunRecord,
   recordShapeIssues,
 } from '@berun/shared';
-import { and, desc, eq, sql } from 'drizzle-orm';
+import { and, desc, eq, ne, sql } from 'drizzle-orm';
 import type { Db } from '../../db/client.js';
 import { runRecords, users } from '../../db/schema/index.js';
 import { decodeCursor, encodeCursor } from '../../lib/cursor.js';
@@ -48,6 +48,33 @@ async function touchRecords(db: Db, userId: string, now: Date) {
   await db.update(users).set({ recordsChangedAt: now }).where(eq(users.id, userId));
 }
 
+/** 같은 날짜·거리·기록이 이미 있으면 409 DUPLICATE_RECORD (PRD 4.4). 수정이면 자기 자신은 제외 */
+async function assertNoDuplicate(
+  db: Db,
+  userId: string,
+  v: { runDate: string; distanceM: number; durationSec: number },
+  exceptId?: string,
+) {
+  const [dup] = await db
+    .select({ id: runRecords.id })
+    .from(runRecords)
+    .where(
+      and(
+        eq(runRecords.userId, userId),
+        eq(runRecords.runDate, v.runDate),
+        eq(runRecords.distanceM, v.distanceM),
+        eq(runRecords.durationSec, v.durationSec),
+        exceptId ? ne(runRecords.id, exceptId) : undefined,
+      ),
+    )
+    .limit(1);
+  if (dup) {
+    throw new AppError('DUPLICATE_RECORD', 'same record already exists', {
+      details: { existingRecordId: dup.id },
+    });
+  }
+}
+
 /** POST /me/records */
 export async function createRecord(db: Db, userId: string, req: RecordInput, now = new Date()) {
   assertNotFuture(req.runDate, now);
@@ -62,25 +89,7 @@ export async function createRecord(db: Db, userId: string, req: RecordInput, now
     });
   }
 
-  if (!req.confirmDuplicate) {
-    const [dup] = await db
-      .select({ id: runRecords.id })
-      .from(runRecords)
-      .where(
-        and(
-          eq(runRecords.userId, userId),
-          eq(runRecords.runDate, req.runDate),
-          eq(runRecords.distanceM, req.distanceM),
-          eq(runRecords.durationSec, req.durationSec),
-        ),
-      )
-      .limit(1);
-    if (dup) {
-      throw new AppError('DUPLICATE_RECORD', 'same record already exists', {
-        details: { existingRecordId: dup.id },
-      });
-    }
-  }
+  if (!req.confirmDuplicate) await assertNoDuplicate(db, userId, req);
 
   const [row] = await db
     .insert(runRecords)
@@ -125,6 +134,16 @@ export async function updateRecord(
   };
   const issues = recordShapeIssues(merged);
   if (issues.length) throw validationFailed(issues);
+
+  // 날짜·거리·기록 중 하나라도 바뀌었으면 자기 자신이 아닌 같은 기록이 있는지 확인 (제목·구분만 바꾸면 확인 안 함)
+  const runDate = req.runDate ?? row.runDate;
+  const keyChanged =
+    runDate !== row.runDate ||
+    merged.distanceM !== row.distanceM ||
+    merged.durationSec !== row.durationSec;
+  if (keyChanged && !req.confirmDuplicate) {
+    await assertNoDuplicate(db, userId, { runDate, ...merged }, row.id);
+  }
 
   const [updated] = await db
     .update(runRecords)

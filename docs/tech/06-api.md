@@ -352,7 +352,8 @@ const SocialLoginReq = z.discriminatedUnion('provider', [
 ]);
 const TokenPair = z.object({ accessToken: z.string(), refreshToken: z.string(), accessTokenExpiresAt: DateTime });
 const SocialLoginRes = z.discriminatedUnion('result', [
-  z.object({ result: z.literal('logged_in'), tokens: TokenPair, pendingTerms: z.array(z.string()) }), // pendingTerms 있으면 재동의
+  z.object({ result: z.literal('logged_in'), tokens: TokenPair, pendingTerms: z.array(z.string()), // pendingTerms 있으면 재동의
+             reactivated: z.boolean() }),   // 이번 로그인으로 휴면(dormant)이 해제됐으면 true (한 번만) → 재동의 뒤 휴면 해제 안내 (PRD v1.6 4.1)
   z.object({ result: z.literal('signup_required'), signupToken: z.string(), signupTokenExpiresAt: DateTime,
              emailProvided: z.boolean() }),   // 이메일 값 자체는 앱에 돌려주지 않는다
 ]);
@@ -695,7 +696,8 @@ const RecordInput = z.object({
   confirmDuplicate: z.boolean().default(false),
 }).superRefine(/* 페이스 150~1200초/km (2'30"~20'00"), 고정 거리 일치 */);
 // POST 201 → RunRecord. 에러: 409 DUPLICATE_RECORD(details.existingRecordId), 422 LIMIT_EXCEEDED(resource=records, limit=500)
-// PATCH: RecordInput.partial() (category와 distanceM은 함께). DELETE → 204
+// PATCH: RecordInput.partial() (category와 distanceM은 함께) + confirmDuplicate(기본 false). DELETE → 204
+// PATCH 에러: 409 DUPLICATE_RECORD(details.existingRecordId) — 날짜·거리·기록 중 하나라도 바뀌었고 자기 자신이 아닌 기록과 같을 때만. 제목·구분만 바꾸면 확인하지 않음 (PRD v1.6 4.4)
 ```
 - 추가·수정·삭제 시 `users.records_changed_at = now()` → 예측 카드 `recordsChangedSince` 계산. 저장된 예측은 다시 계산하지 않는다 (4.4).
 
@@ -1050,3 +1052,4 @@ v1.1에서 PRD v1.2 대조 요청(handoff `20261021-planner-developer-api-v1-prd
 - 2026-10-21: v1.2 — D-019 반영 (handoff `20261021-planner-developer-entry-status.md`). `EntryStatus`·`EntryStatusSource`, `RegistrationBrief`·`Registration`에 `entryStatus`·`entryStatusUpdatedAt`, `POST /races/{id}/registration` 접수 상태 입력·서버 기본값, `PATCH /registrations/{id}` 접수 상태 변경(대회 당일까지), 409 `ALREADY_REGISTERED` → `ALREADY_PLANNED`, 1장 이름 규칙(내부 이름 `registration` 유지 근거). 설명 문장의 "참가 등록" → "참가 예정"
 - 2026-10-21: v1.3 — PRD v1.5 반영. `GET /home/deadlines` 대상을 관심만 ∪ 참가 예정 `not_registered`로 변경 (오픈·마감 행 모두, N-01~N-03과 같은 규칙, 마감 행 시각은 N-03과 같은 기준). 응답 스키마 변경 없음. 대회 당일 변경 가능·앱의 `entryStatus` 항상 전송은 기존 명세와 같음을 표기
 - 2026-10-21: T-018 구현 반영 — 대회 목록·상세 캐시 `no-store`(사용자별 `my` 포함), 목록 쿼리 불리언·메모리 필터 메모, 가입 201·중단 멱등, 참가 예정 서버 기본값일 때 접수 상태 시각·경로 null, `predictionId`·추가 전용 필드 의미, fieldErrors 코드 추가. 요청 스키마의 `.and(GoalInput)`은 같은 계약을 평평한 객체 + 검사로 구현 (`packages/shared/src/registrations.ts`). 구현 엔드포인트 목록은 README
+- 2026-10-21: T-019 — PRD v1.6 반영: `PATCH /me/records/{id}` `confirmDuplicate`·409 `DUPLICATE_RECORD`, `POST /auth/social` `logged_in.reactivated`

@@ -108,7 +108,20 @@ describe('POST /v1/auth/social', () => {
     const body = SocialLoginRes.parse(
       (await social({ provider: 'kakao', accessToken: 'k-exist' })).json(),
     );
-    expect(body).toMatchObject({ result: 'logged_in', pendingTerms: [] });
+    expect(body).toMatchObject({ result: 'logged_in', pendingTerms: [], reactivated: false });
+
+    // 휴면 → 이번 로그인으로 해제되면 reactivated=true, 다음 로그인은 false (PRD v1.6 4.1)
+    await ctx.db.update(users).set({ status: 'dormant' }).where(eq(users.id, user.id));
+    const woke = SocialLoginRes.parse(
+      (await social({ provider: 'kakao', accessToken: 'k-exist' })).json(),
+    );
+    expect(woke).toMatchObject({ result: 'logged_in', reactivated: true });
+    const [u] = await ctx.db.select().from(users).where(eq(users.id, user.id));
+    expect(u!.status).toBe('active');
+    const again = SocialLoginRes.parse(
+      (await social({ provider: 'kakao', accessToken: 'k-exist' })).json(),
+    );
+    expect(again).toMatchObject({ reactivated: false });
 
     await ctx.db.update(users).set({ status: 'suspended' }).where(eq(users.id, user.id));
     const res = await social({ provider: 'kakao', accessToken: 'k-exist' });

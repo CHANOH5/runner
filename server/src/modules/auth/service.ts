@@ -102,7 +102,12 @@ export async function socialLogin(
       return deps.tokens.createSession(tx, existing.userId, device, now);
     });
     const pending = await pendingRequiredTerms(deps.db, existing.userId, now);
-    return { result: 'logged_in', tokens, pendingTerms: pending.map((t) => t.kind) };
+    return {
+      result: 'logged_in',
+      tokens,
+      pendingTerms: pending.map((t) => t.kind),
+      reactivated: existing.status === 'dormant',
+    };
   }
 
   // 신규: users 행을 만들지 않고 가입 세션만 (만 14세 미만 정보 미보관)
