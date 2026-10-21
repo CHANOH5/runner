@@ -1,0 +1,7 @@
+# app/ (Expo)은 앱 작업(T-0xx)에서 package.json을 만들 때 여기에 추가한다.
+packages:
+  - server
+  - packages/*
+
+onlyBuiltDependencies:
+  - esbuild

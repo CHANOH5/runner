@@ -1,0 +1,26 @@
+{
+  "name": "@berun/shared",
+  "version": "0.0.0",
+  "private": true,
+  "description": "앱·서버가 함께 쓰는 Zod 스키마와 타입 (API 명세 tech/06)",
+  "type": "module",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "zod": "^4.1.12"
+  },
+  "devDependencies": {
+    "typescript": "~5.9.3",
+    "vitest": "^4.0.0"
+  }
+}
