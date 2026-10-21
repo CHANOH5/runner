@@ -1,8 +1,8 @@
 # 06. API 명세 — Phase 1 (T-011)
 
 - 담당: 개발자
-- 상태: v1.2 (D-019 참가 예정·접수 상태 반영)
-- 기준: `../planning/05-prd-phase1.md` v1.4, `04-db-schema.md`, `03-architecture.md`
+- 상태: v1.3 (PRD v1.5 홈 접수 임박 대상 반영)
+- 기준: `../planning/05-prd-phase1.md` v1.5, `04-db-schema.md`, `03-architecture.md`
 - 관련 결정: D-005~D-008, D-010, D-013, D-014, D-016~D-018
 
 > 표기
@@ -518,7 +518,7 @@ z.object({
 | 메서드·경로 | 인증 | 설명 |
 |---|---|---|
 | `GET /home/next-race` | 사용자 | 내 다음 대회 카드 |
-| `GET /home/deadlines` | 사용자 | 접수 임박 (관심 ∪ 참가 예정, 7일 안 오픈 / 3일 안 마감, 최대 5개) |
+| `GET /home/deadlines` | 사용자 | 접수 임박 (관심만 ∪ 참가 예정 `접수 전`, 7일 안 오픈 / 3일 안 마감, 최대 5개 — 아래 대상 규칙) |
 | `GET /home/recommended` | 사용자 | 추천 대회 (아래 조건) |
 | `GET /me/notifications/unread-count` | 사용자 | 벨 배지 (6.10 참고) |
 
@@ -538,9 +538,15 @@ z.object({ items: z.array(z.object({
   at: DateTime,                            // 오픈 또는 마감 시각
   timeKnown: z.boolean(),                  // 오픈 시각 미정이면 false
 })) })
+// 응답 스키마는 v1.2와 같다
 // GET /home/recommended
 z.object({ regionCode: RegionCode, items: z.array(RaceSummary), filledNationwide: z.boolean() })
 ```
+- 접수 임박 대상 (PRD v1.5 6.7 ③, 접수 알림 N-01~N-03과 같은 규칙 — tech/03 7장):
+  - 참가 예정이 **있으면** `entry_status = 'not_registered'`일 때만 포함 (관심 여부 무관). `registered`·`missed`인 대회는 **오픈 행·마감 행 모두** 빠진다
+  - 참가 예정이 **없으면** 관심 대회 기준
+  - SQL 조건: `(i.user_id IS NOT NULL AND r.id IS NULL) OR r.entry_status = 'not_registered'`
+  - 마감 행의 `at`은 참가 예정자면 고른 종목의 마감(종목 값 → 없으면 유효 closesAt), 관심만이면 유효 closesAt (N-03과 같음). 마감 시각이 없으면 마감 행을 만들지 않는다
 - 추천 조건 (PRD 6.7 ④): 게시된 대회 중
   1. `region_code` = 내 지역, 대회일 오늘 ~ 오늘+90일
   2. `registrationState` ∈ {`upcoming`, `open`, `unscheduled`} (취소·마감·종료 제외)
@@ -601,6 +607,7 @@ z.object({
   raceEventId: Id,
   entryStatus: z.enum(['not_registered', 'registered']).optional(), // missed는 생성 불가 → 400 VALIDATION_FAILED
   entryStatusSource: EntryStatusSource.optional(),                  // 기본 'form'. 복귀 질문 → S-023 경로면 'return_prompt'
+  // 앱은 entryStatus를 항상 보낸다 (PRD v1.5 4.10 ⑤). 서버 기본값은 다른 클라이언트·구버전 대비용
 }).and(GoalInput)
 // entryStatus 생략 시 서버 기본값: 대회 유효 접수 기간(5장 규칙) 기준 registrationState = 'closed'면 'registered', 그 외 'not_registered'.
 //   앱도 같은 기본값을 미리 선택해 보내지만 서버 규칙이 기준이다 (PRD 4.10 3-1)
@@ -631,7 +638,7 @@ z.object({
 // → Registration
 // 종목을 거리가 다른 종목으로 바꾸고 목표를 보내지 않으면 서버가 목표를 지운다 (4.10 수정) → 응답 goalSource='none'
 // entryStatus가 실제로 바뀌면 entry_status_updated_at = now(), entry_status_source = 요청값. 같은 값이면 시각을 바꾸지 않는다 (멱등)
-// 에러: 409 RACE_FINISHED (race_date < 오늘(KST)이면 수정 불가 — 대회 당일까지 변경 가능), 422 GOAL_OUT_OF_RANGE,
+// 에러: 409 RACE_FINISHED (race_date < 오늘(KST)이면 수정 불가 — 대회 당일까지 변경 가능, PRD v1.5 4.10.1), 422 GOAL_OUT_OF_RANGE,
 //       400 (entryStatus만 있고 entryStatusSource 없음)
 // 'missed'로 바꿔도 행은 남는다. "참가 예정에서 뺄까요?" → [참가 예정 해제]는 앱이 이어서 DELETE를 호출한다
 
@@ -1036,3 +1043,4 @@ v1.1에서 PRD v1.2 대조 요청(handoff `20261021-planner-developer-api-v1-prd
 - 2026-10-21: v1.1 — PRD v1.2 대조 반영 (handoff `20261021-planner-developer-api-v1-prd-v1.2-gaps.md`). 공지 상세: 웹뷰 URL 삭제, `link` 필드, 내린 공지 410 `NOTICE_WITHDRAWN`. 예측 미지원 거리: 422 `TARGET_DISTANCE_UNSUPPORTED`, strategy `predictionUnavailableReason`, `RegistrationBrief.predictionSupported`·`eventDistanceM`, 스플릿 거리 무제한. 추천 대회 조건 명시. 유효 접수 기간 규칙(종목 기간 집계, 마감 없음 = 대회 전날까지, 참가자 N-03 종목 마감). 관리자 종목별 접수 기간 검증. `[PRD 변경 대기]`·`[PRD 확인]` 표시 정리
 - 2026-10-21: T-016 구현 반영 — 공유 패키지 이름 `packages/shared`, 예측 `recordIds` 6개 이상은 스키마 400이 아니라 422 `LIMIT_EXCEEDED`로 통일, 예측 검사 순서·`NO_ELIGIBLE_RECORDS` 사유 판정·`recordIds` fieldErrors 코드, fieldErrors 코드 목록, Fastify 요청 오류 매핑. 구현 엔드포인트: `GET /health`(인증 없음, `/v1` 밖), `POST /me/predictions`, `POST /me/predictions/preview`
 - 2026-10-21: v1.2 — D-019 반영 (handoff `20261021-planner-developer-entry-status.md`). `EntryStatus`·`EntryStatusSource`, `RegistrationBrief`·`Registration`에 `entryStatus`·`entryStatusUpdatedAt`, `POST /races/{id}/registration` 접수 상태 입력·서버 기본값, `PATCH /registrations/{id}` 접수 상태 변경(대회 당일까지), 409 `ALREADY_REGISTERED` → `ALREADY_PLANNED`, 1장 이름 규칙(내부 이름 `registration` 유지 근거). 설명 문장의 "참가 등록" → "참가 예정"
+- 2026-10-21: v1.3 — PRD v1.5 반영. `GET /home/deadlines` 대상을 관심만 ∪ 참가 예정 `not_registered`로 변경 (오픈·마감 행 모두, N-01~N-03과 같은 규칙, 마감 행 시각은 N-03과 같은 기준). 응답 스키마 변경 없음. 대회 당일 변경 가능·앱의 `entryStatus` 항상 전송은 기존 명세와 같음을 표기

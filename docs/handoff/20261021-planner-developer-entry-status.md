@@ -112,6 +112,8 @@ PRD를 **v1.4**로 올렸다 (`docs/planning/05-prd-phase1.md` 4.10, **4.10.1 �
 - [ ] 알림 워커(구현 시): `tech/03` 7장 kind별 대상 규칙, 발송 직전 재판정, N-04 본문 변형·딥링크.
 - [ ] `db/seed.ts`: 개발 참가 예정(`…0301`)에 `entryStatus: 'not_registered'`를 명시한다 (선택). 마감된 시드 대회에 `registered` 예시를 하나 추가하면 수동 확인에 좋다.
 
+- [ ] **(PRD v1.5 추가)** `GET /home/deadlines` 대상 필터를 N-01~N-03 대상 조건과 같게 한다 (06 v1.3 6.5): 참가 예정이 있으면 `not_registered`일 때만, 없으면 관심 기준. 오픈·마감 행 모두 적용, 마감 행 시각은 N-03 기준. 대상 조건은 알림 워커와 **공용 함수** 하나로 둔다.
+
 **테스트**
 - [ ] 영향 확인: `server/test/predictions.test.ts`는 `raceRegistrations`를 insert한다. 새 컬럼이 기본값을 가지므로 **수정 없이 통과해야 한다**. 마이그레이션 적용 후 돌려 확인한다. `engine.test.ts`는 무관하다.
 - [ ] 신규 `server/test/registrations.test.ts`:
@@ -122,6 +124,7 @@ PRD를 **v1.4**로 올렸다 (`docs/planning/05-prd-phase1.md` 4.10, **4.10.1 �
   - PATCH `entryStatus`만 있고 source 없음 → 400
   - 대회일 지난 참가 예정 PATCH·DELETE → 409
   - 같은 대회 두 번째 추가 → 409 `ALREADY_PLANNED`
+- [ ] `GET /home/deadlines` 테스트 (PRD v1.5): 관심만 → 오픈·마감 행 포함 / 참가 예정 `not_registered` → 포함 / `registered`·`missed` → 둘 다 제외 / 관심 + `registered` → 제외 / 참가 예정자의 마감 행 시각 = 고른 종목 마감.
 - [ ] 알림 대상 쿼리 단위 테스트 (워커 구현 시): kind별로 관심만 / `not_registered` / `registered` / `missed` / 관심 + `registered` 5가지 사용자의 포함 여부.
 
 ### 기획 확인 요청 답변 (planner, 2026-10-21 — PRD v1.5)
@@ -130,3 +133,7 @@ PRD를 **v1.4**로 올렸다 (`docs/planning/05-prd-phase1.md` 4.10, **4.10.1 �
 - **c. KPI null 처리 → `entry_status_updated_at`이 null인 행은 분자에서 뺀다 (분모에는 영향 없음).** KPI 분모는 "접수 중 대회의 공식 링크를 처음 연 (사용자, 대회) 쌍"이라 PostHog 이벤트 기준이고, 분자는 그 뒤 7일 안 `entry_status_changed`(to=registered) 또는 `registration_saved`(entry_status=registered) 이벤트다. DB로 교차 확인할 때 null(서버 기본값 `registered`)은 링크 열기와 시점을 비교할 수 없으므로 제외한다. 링크를 열기 전에 이미 `registered`였던 쌍은 분모에서 뺀다. 그리고 **앱은 POST에 항상 `entryStatus`를 보낸다**(PRD 4.10 ⑤)로 명시했으니 null은 사실상 생기지 않는다. **API 변경 없음.** 앱 분석 이벤트 `registration_saved`에 `entry_status`, `source`(`race_detail`/`return_prompt`) 속성을 추가했다 (PRD 2.3, 서버 무관).
 - 참고: 에러 코드 `ALREADY_PLANNED` 반영 확인 — PRD 4.10 수용 기준에 코드명을 넣었다.
 
+(developer, 2026-10-21 — 기획 답변 반영 확인)
+- a: 06의 `PATCH /registrations/{id}`가 이미 `race_date < 오늘`이면 409(대회 당일까지 변경 가능)라 맞다. PRD v1.5 근거만 표기했다.
+- b: `tech/06-api.md` v1.3에서 `GET /home/deadlines` 대상을 관심만 ∪ `not_registered`로 바꿨다. 응답 스키마는 그대로다. `tech/03` 7장에 알림과 공용 조건임을 적었다. 구현 변경 목록과 테스트 목록에도 추가했다.
+- c: DB·API 변경 없음. 앱이 POST에 `entryStatus`를 항상 보낸다는 점을 06에 주석으로 남겼다. DB `entry_status_source`(form / return_prompt)와 분석 이벤트 `registration_saved.source`(race_detail / return_prompt)는 값 체계가 달라도 문제없다 — 앞쪽은 저장 경로, 뒤쪽은 진입 화면이다.

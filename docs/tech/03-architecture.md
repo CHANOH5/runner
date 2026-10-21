@@ -160,6 +160,7 @@ app/src/components/map/
 | `race_d1` (N-05) | 참가 예정 `not_registered`·`registered` | `r.entry_status <> 'missed'` |
 | `race_cancelled`·`race_postponed`·`race_schedule_changed` (N-06) | 관심 ∪ 참가 예정 (접수 상태 무관), 대회일 ≥ 오늘 | 변경 없음 |
 
+- 같은 N-01~N-03 대상 조건을 홈 접수 임박(`GET /home/deadlines`, tech/06 6.5)도 쓴다 — 한 함수로 둔다.
 - 대상 확정 쿼리는 `race_interests i FULL JOIN race_registrations r ON (user_id, race_id)`를 대회 하나에 대해 돈다. `(race_id, entry_status)` 인덱스 사용 (tech/04).
 - 접수 상태를 바꾼 시점이 대상 확정(−30분) 뒤면 행은 이미 만들어져 있으므로, 3) 발송 직전 확인에서 같은 규칙으로 다시 걸러 `cancelled` 처리한다.
 - N-04 본문 변형 판정(`not_registered` + 마감)도 발송 직전 값으로 한다 (렌더링을 발송 시점에 다시 함).
@@ -220,3 +221,4 @@ server/src/
 - 2026-10-21: D-005~D-008 반영 (v1.1) — 실시간 방식 메모, 지도 래퍼 구조(6장), 알림 파이프라인(7장), 가입·탈퇴 외부 연동(8장), 원격 설정·강제 업데이트(9장) 추가
 - 2026-10-21: T-016 — 서버 코드 구조(9-0), 예측 모듈 구현 위치 추가
 - 2026-10-21: D-019 반영 — 알림 kind별 대상 규칙(접수 상태 기준) 표와 대상 확정·발송 직전 재판정, 설명 문장 "참가 등록" → "참가 예정"
+- 2026-10-21: 홈 접수 임박이 N-01~N-03 대상 조건을 공유함을 명시 (PRD v1.5)
