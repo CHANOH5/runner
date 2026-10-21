@@ -59,6 +59,24 @@ curl -X POST localhost:3000/v1/me/predictions \
 
 시드 개발 사용자는 PRD 5.7 예시 1과 같은 10K 기록 3개와 `[개발] 한강 가을 하프마라톤` 하프 참가 등록(`0199f000-0000-7000-8000-000000000301`)을 갖고 있어, 하프 예측 결과가 2:03:22로 나온다.
 
+### 구현된 API (T-016, T-018)
+
+| 영역 | 엔드포인트 |
+|---|---|
+| 상태 | `GET /health` |
+| 앱 설정 | `GET /v1/app-config` |
+| 인증·가입 | `POST /v1/auth/social`, `POST /v1/auth/signup`, `POST /v1/auth/signup/abort`, `POST /v1/auth/refresh`, `POST /v1/auth/logout`, `GET /v1/terms/current`, `GET /v1/nicknames/availability` |
+| 내 정보 | `GET /v1/me`, `POST /v1/me/consents` |
+| 대회 | `GET /v1/races`, `GET /v1/races/{raceId}` |
+| 참가 예정·접수 상태 | `POST /v1/races/{raceId}/registration`, `GET·PATCH·DELETE /v1/registrations/{id}`, `GET /v1/me/races?tab=` |
+| 홈 | `GET /v1/home/deadlines` |
+| 기록 | `GET·POST /v1/me/records`, `PATCH·DELETE /v1/me/records/{id}` |
+| 예측 | `POST /v1/me/predictions`, `POST /v1/me/predictions/preview` |
+
+- 공통: 약관 재동의 게이트(403 `TERMS_REQUIRED`), `X-App-Version`·`X-Platform`이 있으면 최소 버전 검사(426).
+- 소셜 로그인은 provider 키(`.env.example`의 `KAKAO_APP_ID` 등)가 있어야 동작한다. 키 없이 화면 흐름을 확인하려면 위 `dev:token`을 쓴다. 통합 테스트는 가짜 verifier를 쓴다.
+- 로그인·가입·토큰 회전은 `JWT_PRIVATE_KEY`, Apple 로그인은 `TOKEN_ENC_KEY`도 필요하다 (`openssl rand -base64 32`).
+
 ## 스크립트 (루트)
 
 | 명령 | 내용 |

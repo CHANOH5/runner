@@ -7,12 +7,17 @@ import type { Db } from './db/client.js';
 import adminRoutes from './modules/admin/index.js';
 import authRoutes from './modules/auth/index.js';
 import healthRoutes from './modules/health/index.js';
+import homeRoutes from './modules/home/index.js';
 import notificationRoutes from './modules/notifications/index.js';
 import predictionRoutes from './modules/predictions/index.js';
 import raceRoutes from './modules/races/index.js';
 import recordRoutes from './modules/records/index.js';
 import registrationRoutes from './modules/registrations/index.js';
 import userRoutes from './modules/users/index.js';
+import { createTokenCipher, type TokenCipher } from './lib/crypto.js';
+import { createTokenIssuer, type TokenIssuer } from './modules/auth/tokens.js';
+import { verifiersFromConfig, type SocialVerifiers } from './modules/auth/verifiers.js';
+import { registerAppVersionCheck } from './plugins/app-version.js';
 import { authPlugin } from './plugins/auth.js';
 import { registerErrorHandler } from './plugins/error-handler.js';
 
@@ -21,6 +26,9 @@ declare module 'fastify' {
     config: Config;
     db: Db;
     redis: Redis;
+    tokens: TokenIssuer;
+    verifiers: SocialVerifiers;
+    cipher: TokenCipher | null;
   }
 }
 
@@ -30,6 +38,10 @@ export type AppDeps = {
   redis: Redis;
   /** 테스트에서 로그를 끄거나 바꿀 때 */
   logger?: FastifyServerOptions['logger'];
+  /** 소셜 verifier 교체 (테스트는 가짜를 넣는다). 없으면 config로 실제 verifier를 만든다 */
+  verifiers?: SocialVerifiers;
+  /** 원격 설정(최소 앱 버전) 캐시 시간. 기본 30초, 테스트 0 */
+  configCacheMs?: number;
 };
 
 /** 요청 본문 최대 64KB (tech/06 1장) */
@@ -57,6 +69,12 @@ export async function buildApp(deps: AppDeps) {
   app.decorate('config', deps.config);
   app.decorate('db', deps.db);
   app.decorate('redis', deps.redis);
+  app.decorate('tokens', await createTokenIssuer(deps.config.jwtPrivateKey));
+  app.decorate('verifiers', deps.verifiers ?? verifiersFromConfig(deps.config.social));
+  app.decorate(
+    'cipher',
+    deps.config.tokenEncKey ? createTokenCipher(deps.config.tokenEncKey) : null,
+  );
 
   app.setValidatorCompiler(validatorCompiler);
   app.setSerializerCompiler(serializerCompiler);
@@ -67,6 +85,7 @@ export async function buildApp(deps: AppDeps) {
   });
 
   await app.register(authPlugin, { publicKeyPem: deps.config.jwtPublicKey });
+  registerAppVersionCheck(app, deps.configCacheMs ?? 30_000);
 
   await app.register(healthRoutes);
 
@@ -77,6 +96,7 @@ export async function buildApp(deps: AppDeps) {
       await v1.register(userRoutes);
       await v1.register(raceRoutes);
       await v1.register(registrationRoutes);
+      await v1.register(homeRoutes);
       await v1.register(recordRoutes);
       await v1.register(predictionRoutes);
       await v1.register(notificationRoutes);

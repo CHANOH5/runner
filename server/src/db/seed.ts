@@ -8,9 +8,11 @@ import { addDays, kstDate } from '../lib/time.js';
 import { createDb, type Db } from './client.js';
 import {
   appConfigs,
+  authIdentities,
   notificationSettings,
   privacySettings,
   raceEvents,
+  raceInterests,
   raceRegistrations,
   races,
   raceSources,
@@ -37,7 +39,10 @@ export const SEED_IDS = {
   eventChuncheonFull: '0199f000-0000-7000-8000-000000000207',
   eventDaeguFull: '0199f000-0000-7000-8000-000000000208',
   eventJeju: '0199f000-0000-7000-8000-000000000209',
+  raceIncheonClosed: '0199f000-0000-7000-8000-000000000106',
+  eventIncheon10k: '0199f000-0000-7000-8000-000000000210',
   devRegistration: '0199f000-0000-7000-8000-000000000301',
+  devRegistrationClosed: '0199f000-0000-7000-8000-000000000302',
 } as const;
 
 const TERMS = [
@@ -214,6 +219,34 @@ function raceSeeds(now: Date): RaceSeed[] {
       ],
     },
     {
+      // 접수 마감된 예정 대회 (참가 예정 접수 상태 'registered' 예시)
+      id: SEED_IDS.raceIncheonClosed,
+      name: '[개발] 인천 겨울 10K',
+      slug: 'dev-incheon-winter-10k-2026',
+      regionCode: 'incheon',
+      venueName: '송도 센트럴파크',
+      raceDate: '2026-12-13',
+      registrationOpensAt: kst('2026-09-01T10:00:00'),
+      registrationClosesAt: kst('2026-10-10T18:00:00'),
+      publishStatus: 'published',
+      registrationMethod: 'first_come',
+      dedupeKey: '인천겨울10k|2026-12-13',
+      officialUrl: 'https://example.com/incheon-10k',
+      lastVerifiedAt: verified,
+      events: [
+        {
+          id: SEED_IDS.eventIncheon10k,
+          raceId: SEED_IDS.raceIncheonClosed,
+          name: '10km',
+          category: '10k',
+          distanceM: 10000,
+          startAt: kst('2026-12-13T09:00:00'),
+          timeLimitMin: 90,
+          feeKrw: 30000,
+        },
+      ],
+    },
+    {
       // 게시 전 초안 (앱 API에 보이면 안 됨)
       id: SEED_IDS.raceJejuDraft,
       name: '[개발] 제주 오름 트레일',
@@ -291,6 +324,10 @@ export async function seed(db: Db, now = new Date()): Promise<void> {
       .values({ id: SEED_IDS.devUser, email: 'dev@example.com', birthYear: 1992 })
       .onConflictDoNothing();
     await tx
+      .insert(authIdentities)
+      .values({ userId: SEED_IDS.devUser, provider: 'kakao', providerUid: 'dev-kakao-1' })
+      .onConflictDoNothing();
+    await tx
       .insert(userProfiles)
       .values({ userId: SEED_IDS.devUser, nickname: '개발러너', regionCode: 'seoul' })
       .onConflictDoNothing();
@@ -330,16 +367,40 @@ export async function seed(db: Db, now = new Date()): Promise<void> {
       )
       .onConflictDoNothing();
 
+    // 참가 예정 2건: 접수 중 대회는 접수 전, 마감된 대회는 접수 완료 (D-019)
     await tx
       .insert(raceRegistrations)
-      .values({
-        id: SEED_IDS.devRegistration,
-        userId: SEED_IDS.devUser,
-        raceId: SEED_IDS.raceHangang,
-        raceEventId: SEED_IDS.eventHangangHalf,
-        goalTimeSec: 7199,
-        goalPaceSecPerKm: Math.round(7199 / (21097 / 1000)),
-      })
+      .values([
+        {
+          id: SEED_IDS.devRegistration,
+          userId: SEED_IDS.devUser,
+          raceId: SEED_IDS.raceHangang,
+          raceEventId: SEED_IDS.eventHangangHalf,
+          goalTimeSec: 7199,
+          goalPaceSecPerKm: Math.round(7199 / (21097 / 1000)),
+          goalSource: 'manual',
+          entryStatus: 'not_registered',
+        },
+        {
+          id: SEED_IDS.devRegistrationClosed,
+          userId: SEED_IDS.devUser,
+          raceId: SEED_IDS.raceIncheonClosed,
+          raceEventId: SEED_IDS.eventIncheon10k,
+          entryStatus: 'registered',
+          entryStatusUpdatedAt: now,
+          entryStatusSource: 'form',
+        },
+      ])
+      .onConflictDoNothing();
+    // 관심: 참가 예정 대회(자동 켜짐과 같게) + 부산 대회(관심만)
+    await tx
+      .insert(raceInterests)
+      .values(
+        [SEED_IDS.raceHangang, SEED_IDS.raceIncheonClosed, SEED_IDS.raceBusan].map((raceId) => ({
+          userId: SEED_IDS.devUser,
+          raceId,
+        })),
+      )
       .onConflictDoNothing();
   });
 }

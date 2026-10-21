@@ -273,6 +273,7 @@ CREATE TABLE race_registrations (
   race_event_id   uuid NOT NULL REFERENCES race_events(id) ON DELETE CASCADE,
   goal_time_sec   integer,
   goal_pace_sec_per_km integer,                    -- 앱 서버가 goal_time_sec와 종목 거리로 계산해 저장
+  goal_source     text NOT NULL DEFAULT 'none',    -- prediction | manual | none (API Registration.goalSource). CHECK: none ⇔ goal_time_sec IS NULL
   verification_level smallint NOT NULL DEFAULT 0, -- 0: 자가 | 1: 배번 | 2: 공식 (P-VER)
   finish_time_sec integer,                         -- Phase 4 결과 입력
   status          text NOT NULL DEFAULT 'planned', -- planned | finished | dns | dnf
@@ -646,3 +647,4 @@ CREATE TABLE deletion_jobs (                     -- 파기 배치 실행 기록 
 - 2026-10-21: API 명세(T-011) 작성 중 보완 — `auth_sessions`(refresh token 회전) 신규, `users.records_changed_at`, `run_records.category`·`updated_at`, `devices.push_token` 유니크, `admin_users` 인증 컬럼, `admin_audit_logs.memo`
 - 2026-10-21: T-016 구현 반영 — `race_courses`·`registration_verifications`를 Phase 2로 표시(PRD 9장과 정합), 구현 위치·마이그레이션 순서 메모, `predictions (user_id, created_at DESC)` 인덱스 추가, `input_snapshot` 내용 명시
 - 2026-10-21: D-019 반영 (handoff `20261021-planner-developer-entry-status.md`) — `race_registrations`에 `entry_status`(CHECK, 기본 `not_registered`)·`entry_status_updated_at`·`entry_status_source`(CHECK) 추가, `(race_id, entry_status)` 인덱스. 설명 문장의 "참가 등록" → "참가 예정". 테이블 이름은 유지 (이름 규칙 메모 추가)
+- 2026-10-21: T-018 구현 — 마이그레이션 `0003_entry_status.sql`로 `entry_status`·`entry_status_updated_at`·`entry_status_source`·`(race_id, entry_status)` 인덱스 적용. API 응답 `Registration.goalSource`를 저장할 곳이 없어 **`goal_source` 컬럼 추가** (CHECK: 값 3개 + `none` ⇔ 목표 없음). 기존 행은 목표가 있으면 `manual`로 채움
