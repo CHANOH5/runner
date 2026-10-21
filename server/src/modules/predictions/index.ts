@@ -16,7 +16,7 @@ export default async function predictionRoutes(app: FastifyInstance) {
   r.post(
     '/me/predictions',
     {
-      onRequest: app.authenticate,
+      onRequest: [app.authenticate, app.termsGate],
       schema: { body: PredictionReq, response: { 201: Prediction } },
     },
     async (request, reply) => {
@@ -30,7 +30,7 @@ export default async function predictionRoutes(app: FastifyInstance) {
   r.post(
     '/me/predictions/preview',
     {
-      onRequest: app.authenticate,
+      onRequest: [app.authenticate, app.termsGate],
       schema: { body: PredictionReq, response: { 200: Prediction } },
     },
     async (request, reply) => {

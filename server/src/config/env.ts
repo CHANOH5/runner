@@ -20,7 +20,32 @@ export const Env = DatabaseEnv.extend({
   REDIS_URL: z.url({ protocol: /^rediss?$/ }),
   /** access token(ES256) 검증 공개키. 없으면 인증이 필요한 API는 모두 401 */
   JWT_PUBLIC_KEY: z.preprocess(emptyToUndefined, pem.optional()),
+  /** access token(ES256) 발급 개인키. 없으면 로그인·가입·토큰 회전이 500 (운영은 Secrets Manager) */
+  JWT_PRIVATE_KEY: z.preprocess(emptyToUndefined, pem.optional()),
+  /** Apple refresh token 등 저장 암호화 키 (AES-256-GCM, base64 32바이트). 운영은 KMS로 교체 예정 */
+  TOKEN_ENC_KEY: z.preprocess(
+    emptyToUndefined,
+    z
+      .base64()
+      .refine((v) => Buffer.from(v, 'base64').length === 32, '32 bytes')
+      .optional(),
+  ),
+  /** 소셜 로그인 (값이 없으면 그 provider는 비활성 → 로그인 시 500) */
+  KAKAO_APP_ID: z.preprocess(emptyToUndefined, z.string().optional()),
+  /** 쉼표로 구분한 Google OAuth 클라이언트 id (iOS·Android·웹) */
+  GOOGLE_CLIENT_IDS: z.preprocess(emptyToUndefined, z.string().optional()),
+  /** Apple: 앱 bundle id(= client_id), 팀 id, Sign in with Apple 키 id·개인키(PEM) */
+  APPLE_CLIENT_ID: z.preprocess(emptyToUndefined, z.string().optional()),
+  APPLE_TEAM_ID: z.preprocess(emptyToUndefined, z.string().optional()),
+  APPLE_KEY_ID: z.preprocess(emptyToUndefined, z.string().optional()),
+  APPLE_PRIVATE_KEY: z.preprocess(emptyToUndefined, pem.optional()),
 });
+
+export type SocialConfig = {
+  kakao: { appId: string } | null;
+  google: { clientIds: string[] } | null;
+  apple: { clientId: string; teamId: string; keyId: string; privateKey: string } | null;
+};
 
 export type Config = {
   env: z.infer<typeof Env>['NODE_ENV'];
@@ -30,6 +55,9 @@ export type Config = {
   databaseUrl: string;
   redisUrl: string;
   jwtPublicKey: string | undefined;
+  jwtPrivateKey: string | undefined;
+  tokenEncKey: string | undefined;
+  social: SocialConfig;
 };
 
 export class ConfigError extends Error {
@@ -56,6 +84,27 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): Config {
     databaseUrl: env.DATABASE_URL,
     redisUrl: env.REDIS_URL,
     jwtPublicKey: env.JWT_PUBLIC_KEY,
+    jwtPrivateKey: env.JWT_PRIVATE_KEY,
+    tokenEncKey: env.TOKEN_ENC_KEY,
+    social: {
+      kakao: env.KAKAO_APP_ID ? { appId: env.KAKAO_APP_ID } : null,
+      google: env.GOOGLE_CLIENT_IDS
+        ? {
+            clientIds: env.GOOGLE_CLIENT_IDS.split(',')
+              .map((s) => s.trim())
+              .filter(Boolean),
+          }
+        : null,
+      apple:
+        env.APPLE_CLIENT_ID && env.APPLE_TEAM_ID && env.APPLE_KEY_ID && env.APPLE_PRIVATE_KEY
+          ? {
+              clientId: env.APPLE_CLIENT_ID,
+              teamId: env.APPLE_TEAM_ID,
+              keyId: env.APPLE_KEY_ID,
+              privateKey: env.APPLE_PRIVATE_KEY,
+            }
+          : null,
+    },
   };
 }
 
