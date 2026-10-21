@@ -88,35 +88,35 @@ PRD를 **v1.4**로 올렸다 (`docs/planning/05-prd-phase1.md` 4.10, **4.10.1 �
 
 ### 구현 변경 목록 (개발-서버 다음 작업용)
 **마이그레이션**
-- [ ] `server/src/db/schema/participation.ts`의 `raceRegistrations`에 다음을 추가하고 `pnpm db:generate`로 새 마이그레이션(예: `0003_entry_status.sql`)을 만든다. 기존 0000~0002는 고치지 않는다 (README 규칙).
+- [x] `server/src/db/schema/participation.ts`의 `raceRegistrations`에 다음을 추가하고 `pnpm db:generate`로 새 마이그레이션(예: `0003_entry_status.sql`)을 만든다. 기존 0000~0002는 고치지 않는다 (README 규칙).
   - `entryStatus` text NOT NULL default `'not_registered'`
   - `entryStatusUpdatedAt` timestamptz
   - `entryStatusSource` text
   - `check()` 2개 (entry_status 값 3개, entry_status_source 값 4개)
   - 인덱스 `(race_id, entry_status)`
-- [ ] 생성된 SQL을 확인한다: 기존 행 기본값 채움, CHECK 이름, 인덱스.
+- [x] 생성된 SQL을 확인한다: 기존 행 기본값 채움, CHECK 이름, 인덱스.
 
 **공유 패키지 (`packages/shared`)**
-- [ ] `errors.ts`: `ALREADY_REGISTERED` → `ALREADY_PLANNED`. 아직 사용처는 없다 (registrations 모듈이 빈 껍데기).
-- [ ] `registrations.ts` 신규: `EntryStatus`, `EntryStatusSource`, `RegistrationBrief`, `Registration`, POST·PATCH 요청 스키마 (06 6.8).
+- [x] `errors.ts`: `ALREADY_REGISTERED` → `ALREADY_PLANNED`. 아직 사용처는 없다 (registrations 모듈이 빈 껍데기).
+- [x] `registrations.ts` 신규: `EntryStatus`, `EntryStatusSource`, `RegistrationBrief`, `Registration`, POST·PATCH 요청 스키마 (06 6.8).
 
 **서버**
-- [ ] `modules/registrations` 구현 (06 6.7·6.8):
+- [x] `modules/registrations` 구현 (06 6.7·6.8):
   - 생성 시 기본값 = 유효 접수 기간 기준 `closed` → `registered`
   - `missed`로 생성하면 400
   - PATCH: `entryStatus`가 있으면 source 필수, 값이 바뀔 때만 시각 갱신
   - `race_date < 오늘`이면 409 `RACE_FINISHED`
   - 409 `ALREADY_PLANNED`
-- [ ] "유효 접수 기간" 계산(06 5장)을 공용 함수 하나로 만들어 races·home·registrations·알림이 같이 쓴다.
-- [ ] `GET /races/{id}`의 `my.registration`, `GET /me/races?tab=upcoming`, `GET /home/next-race` 응답에 `entryStatus`·`entryStatusUpdatedAt`를 넣는다.
+- [x] "유효 접수 기간" 계산(06 5장)을 공용 함수 하나로 만들어 races·home·registrations·알림이 같이 쓴다.
+- [x] `GET /races/{id}`의 `my.registration`, `GET /me/races?tab=upcoming`, `GET /home/next-race` 응답에 `entryStatus`·`entryStatusUpdatedAt`를 넣는다.
 - [ ] 알림 워커(구현 시): `tech/03` 7장 kind별 대상 규칙, 발송 직전 재판정, N-04 본문 변형·딥링크.
-- [ ] `db/seed.ts`: 개발 참가 예정(`…0301`)에 `entryStatus: 'not_registered'`를 명시한다 (선택). 마감된 시드 대회에 `registered` 예시를 하나 추가하면 수동 확인에 좋다.
+- [x] `db/seed.ts`: 개발 참가 예정(`…0301`)에 `entryStatus: 'not_registered'`를 명시한다 (선택). 마감된 시드 대회에 `registered` 예시를 하나 추가하면 수동 확인에 좋다.
 
 - [ ] **(PRD v1.5 추가)** `GET /home/deadlines` 대상 필터를 N-01~N-03 대상 조건과 같게 한다 (06 v1.3 6.5): 참가 예정이 있으면 `not_registered`일 때만, 없으면 관심 기준. 오픈·마감 행 모두 적용, 마감 행 시각은 N-03 기준. 대상 조건은 알림 워커와 **공용 함수** 하나로 둔다.
 
 **테스트**
-- [ ] 영향 확인: `server/test/predictions.test.ts`는 `raceRegistrations`를 insert한다. 새 컬럼이 기본값을 가지므로 **수정 없이 통과해야 한다**. 마이그레이션 적용 후 돌려 확인한다. `engine.test.ts`는 무관하다.
-- [ ] 신규 `server/test/registrations.test.ts`:
+- [x] 영향 확인: `server/test/predictions.test.ts`는 `raceRegistrations`를 insert한다. 새 컬럼이 기본값을 가지므로 **수정 없이 통과해야 한다**. 마이그레이션 적용 후 돌려 확인한다. `engine.test.ts`는 무관하다.
+- [x] 신규 `server/test/registrations.test.ts`:
   - 접수 중 대회 생성 → `not_registered`
   - 마감 대회 생성(값 없음) → `registered`
   - 생성 시 `missed` → 400
@@ -124,8 +124,13 @@ PRD를 **v1.4**로 올렸다 (`docs/planning/05-prd-phase1.md` 4.10, **4.10.1 �
   - PATCH `entryStatus`만 있고 source 없음 → 400
   - 대회일 지난 참가 예정 PATCH·DELETE → 409
   - 같은 대회 두 번째 추가 → 409 `ALREADY_PLANNED`
-- [ ] `GET /home/deadlines` 테스트 (PRD v1.5): 관심만 → 오픈·마감 행 포함 / 참가 예정 `not_registered` → 포함 / `registered`·`missed` → 둘 다 제외 / 관심 + `registered` → 제외 / 참가 예정자의 마감 행 시각 = 고른 종목 마감.
+- [x] `GET /home/deadlines` 테스트 (PRD v1.5): 관심만 → 오픈·마감 행 포함 / 참가 예정 `not_registered` → 포함 / `registered`·`missed` → 둘 다 제외 / 관심 + `registered` → 제외 / 참가 예정자의 마감 행 시각 = 고른 종목 마감.
 - [ ] 알림 대상 쿼리 단위 테스트 (워커 구현 시): kind별로 관심만 / `not_registered` / `registered` / `missed` / 관심 + `registered` 5가지 사용자의 포함 여부.
+
+(developer, 2026-10-21 — T-018 구현 완료. 브랜치 `claude/dev-phase1-api`)
+- 위 목록 중 **알림 워커**와 **알림 대상 쿼리 단위 테스트**를 뺀 전부를 구현했다. 대상 조건은 `server/src/lib/entry-alert-audience.ts` 한 곳에 두었고 홈 접수 임박이 이미 쓴다. 워커는 알림 작업에서 같은 조건을 쓴다.
+- 다른 점 1개: 응답 `Registration.goalSource`를 저장할 곳이 없어 `race_registrations.goal_source` 컬럼을 같은 마이그레이션(0003)에 추가했다 (tech/04 변경 이력).
+- 아직 없는 것: `GET /home/next-race`의 `entryStatus` (홈 다음 대회 API 자체가 다음 작업). `GET /races/{id}`의 `my.registration`, `GET /me/races`에는 들어갔다.
 
 ### 기획 확인 요청 답변 (planner, 2026-10-21 — PRD v1.5)
 - **a. 대회 당일 변경 → 대회 당일까지 변경 가능.** API 현재 구현(`race_date < 오늘`이면 409)이 맞다. 당일 잠금은 필요 없다 (당일 아침에 "접수 못 함"으로 바꾸는 경우도 있다). PRD 4.10.1 문구를 "대회 당일까지(`race_date ≥ 오늘`, KST)"로 고치고 수용 기준 2개(당일 가능 / 다음 날 409)를 넣었다. **API 변경 없음.**

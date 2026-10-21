@@ -41,7 +41,7 @@
 | 문자열 검증 | 앞뒤 공백 제거 후 **코드포인트 단위** 길이 검사 (PRD 3.5). 서버가 같은 Zod 스키마로 다시 검증 |
 | 공통 요청 헤더 | `Authorization: Bearer {accessToken}` (인증 API 제외) · `X-App-Version: 1.0.3` · `X-Platform: ios\|android` · `X-Device-Id: {uuid}` (앱 설치 시 생성해 보관) |
 | 멱등 키 | 생성형 POST(기록 추가, 참가 예정 추가, 제보, 예측)는 `Idempotency-Key: {uuid}` 권장. 같은 키로 24시간 안에 다시 오면 처음 응답을 그대로 돌려준다 (중복 탭·재시도 대응, PRD 3.4) |
-| 캐시 | 대회 목록·상세 공개 데이터: `Cache-Control: private, max-age=60` + `ETag`. 개인 데이터: `no-store` |
+| 캐시 | 대회 목록·상세 공개 데이터: `Cache-Control: private, max-age=60` + `ETag`. 개인 데이터: `no-store`. **(T-018) Phase 1은 대회 목록·상세도 `no-store`** — 로그인 필수라 응답에 사용자별 `my`(관심·참가 예정)가 들어 있어, 추가·해제 직후 기기 HTTP 캐시가 오래된 값을 돌려줄 수 있다. 비로그인 둘러보기를 열 때 `my`를 뺀 공개 응답에 다시 적용한다 |
 | 버전 | URL 경로 `/v1`. 깨지는 변경은 `/v2`. 필드 추가는 깨지지 않는 변경으로 본다 (앱은 모르는 필드를 무시) |
 | 시간대 | 요청에 시간대를 받지 않는다. 모든 계산은 Asia/Seoul |
 | 이름 규칙 (D-019) | 화면 용어 **참가 예정** = 내부 이름 `registration` (`/registrations`, `registrationId`, DB `race_registrations`). 사용자가 기록하는 **실제 대회 접수 여부** = `entryStatus` (`entry_status`). `races`의 `registrationOpensAt`·`registrationState` 등은 **공식 접수 기간·상태**다. 내부 이름은 바꾸지 않는다 — 근거: ① 화면에 노출되지 않는 계약 이름이고 ② 이미 구현된 예측 API·공유 스키마(`target.type = 'registration'`, `raceRegistrationId`)·테스트·시드가 쓰고 있어 바꾸면 마이그레이션과 API 호환 비용만 생기며 ③ PRD 4.10이 내부 이름 유지를 허용한다. 대신 **새로 만드는 이름에는 `registered`를 '참가 예정' 뜻으로 쓰지 않는다** (`entryStatus = 'registered'`와 헷갈림 → 에러 코드 `ALREADY_PLANNED`) |
@@ -81,7 +81,7 @@ const ApiError = z.object({
     details: z.record(z.unknown()).optional(),
     fieldErrors: z.array(z.object({   // 400 VALIDATION_FAILED일 때만
       path: z.string(),               // "goalTimeSec", "events[2].distanceM"
-      code: z.string(),               // required | too_short | too_long | too_few | too_many | out_of_range | invalid_format | invalid_value | invalid_type | unknown_field | (API별) not_found · not_eligible
+      code: z.string(),               // required | too_short | too_long | too_few | too_many | out_of_range | invalid_format | invalid_value | invalid_type | unknown_field | (API별) not_found · not_eligible · missing_required(가입 필수 약관) · pace_out_of_range(기록 페이스) · not_allowed(goalSource none인데 goalTimeSec)
     })).optional(),
   }),
   requestId: z.string(),              // 로그 추적용 (응답 헤더 X-Request-Id와 같음)
@@ -384,7 +384,8 @@ const SignupRes = z.object({ tokens: TokenPair, user: Me, marketingAgreedAt: Dat
 // 에러: 401 SIGNUP_TOKEN_EXPIRED, 409 NICKNAME_TAKEN, 422 NICKNAME_FORBIDDEN, 422 UNDERAGE, 400 VALIDATION_FAILED(필수 약관 누락 포함)
 // 422 UNDERAGE면 서버가 abort와 같은 처리(소셜 연결 해제, 세션 삭제)를 한 뒤 응답한다. 앱은 24시간 차단 플래그만 기기에 둔다.
 
-// POST /auth/signup/abort   → 204
+// 응답 201. (T-018) 같은 소셜 계정의 가입이 먼저 끝났으면 401 SIGNUP_TOKEN_EXPIRED (처음부터 로그인)
+// POST /auth/signup/abort   → 204 (가입 토큰이 이미 만료돼도 204 — 멱등)
 // POST /auth/refresh
 z.object({ refreshToken: z.string() })  →  TokenPair
 // 에러: 401 REFRESH_INVALID | REFRESH_REUSED, 403 ACCOUNT_SUSPENDED
@@ -489,6 +490,7 @@ const RaceListQuery = z.object({
 z.object({ items: z.array(RaceSummary), nextCursor: z.string().nullable() })
 ```
 - 기본 조건: `publish_status = 'published'`, `race_date ≥ 오늘`(`includeEnded=false`), 정렬 `race_date, name`.
+- (T-018 구현) 불리언 쿼리는 `true`·`false` 문자열만 받는다 (`z.coerce.boolean`은 `'false'`도 참이 되므로). 접수 상태 필터·정렬·커서는 SQL로 거른 결과를 메모리에서 처리한다 (유효 접수 기간 계산을 한 함수로 유지, 게시 대회 수백 개 기준). 검색은 공백 제거·소문자 비교(`position`)이고 `pg_trgm`은 대회 수가 늘면 도입한다.
 - **검색(`q`가 있을 때)**: 지난 대회도 포함하고 **예정 대회 전부 → 지난 대회(최근 순)** 순서로 돌려준다. 각 항목의 `registrationState === 'ended'`로 앱이 "지난 대회" 구분선을 그린다 (PRD 4.6).
 - 참가비 구간 경계 (PRD 4.6, 경계값은 낮은 구간에 포함): `le30k` = ≤ 30,000 / `30k_50k` = 30,001~50,000 / `50k_100k` = 50,001~100,000 / `gt100k` = > 100,000.
 - 구현: 검색은 PostgreSQL `pg_trgm` + 공백 제거 정규화 컬럼. 대회 수백 개 규모라 충분하다.
@@ -610,6 +612,7 @@ z.object({
   // 앱은 entryStatus를 항상 보낸다 (PRD v1.5 4.10 ⑤). 서버 기본값은 다른 클라이언트·구버전 대비용
 }).and(GoalInput)
 // entryStatus 생략 시 서버 기본값: 대회 유효 접수 기간(5장 규칙) 기준 registrationState = 'closed'면 'registered', 그 외 'not_registered'.
+//   (T-018) 서버 기본값을 쓰면 entry_status_updated_at·entry_status_source 모두 null. 앱이 entryStatus를 보내면 source 기본 'form'
 //   앱도 같은 기본값을 미리 선택해 보내지만 서버 규칙이 기준이다 (PRD 4.10 3-1)
 // 응답 201
 const Registration = z.object({
@@ -642,6 +645,8 @@ z.object({
 //       400 (entryStatus만 있고 entryStatusSource 없음)
 // 'missed'로 바꿔도 행은 남는다. "참가 예정에서 뺄까요?" → [참가 예정 해제]는 앱이 이어서 DELETE를 호출한다
 
+// (T-018) Registration.predictionId는 이 참가 예정에 연결된 가장 최근 예측. PATCH는 예측을 다시 계산하지 않는다.
+//   interestAutoEnabled·showOfficialRegistrationNotice는 추가(POST) 응답에서만 의미가 있고 GET·PATCH는 false
 // DELETE /registrations/{id} → 204 (참가 예정 해제). predictions.race_registration_id = null, 관심 유지, 대회일 지났으면 409 RACE_FINISHED
 
 // GET /registrations/{id}/strategy
@@ -1044,3 +1049,4 @@ v1.1에서 PRD v1.2 대조 요청(handoff `20261021-planner-developer-api-v1-prd
 - 2026-10-21: T-016 구현 반영 — 공유 패키지 이름 `packages/shared`, 예측 `recordIds` 6개 이상은 스키마 400이 아니라 422 `LIMIT_EXCEEDED`로 통일, 예측 검사 순서·`NO_ELIGIBLE_RECORDS` 사유 판정·`recordIds` fieldErrors 코드, fieldErrors 코드 목록, Fastify 요청 오류 매핑. 구현 엔드포인트: `GET /health`(인증 없음, `/v1` 밖), `POST /me/predictions`, `POST /me/predictions/preview`
 - 2026-10-21: v1.2 — D-019 반영 (handoff `20261021-planner-developer-entry-status.md`). `EntryStatus`·`EntryStatusSource`, `RegistrationBrief`·`Registration`에 `entryStatus`·`entryStatusUpdatedAt`, `POST /races/{id}/registration` 접수 상태 입력·서버 기본값, `PATCH /registrations/{id}` 접수 상태 변경(대회 당일까지), 409 `ALREADY_REGISTERED` → `ALREADY_PLANNED`, 1장 이름 규칙(내부 이름 `registration` 유지 근거). 설명 문장의 "참가 등록" → "참가 예정"
 - 2026-10-21: v1.3 — PRD v1.5 반영. `GET /home/deadlines` 대상을 관심만 ∪ 참가 예정 `not_registered`로 변경 (오픈·마감 행 모두, N-01~N-03과 같은 규칙, 마감 행 시각은 N-03과 같은 기준). 응답 스키마 변경 없음. 대회 당일 변경 가능·앱의 `entryStatus` 항상 전송은 기존 명세와 같음을 표기
+- 2026-10-21: T-018 구현 반영 — 대회 목록·상세 캐시 `no-store`(사용자별 `my` 포함), 목록 쿼리 불리언·메모리 필터 메모, 가입 201·중단 멱등, 참가 예정 서버 기본값일 때 접수 상태 시각·경로 null, `predictionId`·추가 전용 필드 의미, fieldErrors 코드 추가. 요청 스키마의 `.and(GoalInput)`은 같은 계약을 평평한 객체 + 검사로 구현 (`packages/shared/src/registrations.ts`). 구현 엔드포인트 목록은 README

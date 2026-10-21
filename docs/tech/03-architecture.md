@@ -184,6 +184,12 @@ app/src/components/map/
 - 카카오는 우리 서버가 사용자 정보 API로 토큰을 검증하는 순간 앱 연결을 "가입 완료"로 유지하므로, 가입을 끝내지 않은 사용자는 **우리가 직접 unlink**해야 한다.
 - Apple 인가 코드는 수명이 짧아 로그인 즉시 refresh token으로 교환한다. 가입 완료 시 `auth_identities.revoke_token_enc`에 암호화 저장 (KMS).
 
+구현 (T-018, `server/src/modules/auth/`):
+- provider 검증은 `SocialVerifier` 인터페이스(`verifiers.ts`). 카카오(토큰 정보로 앱 id 확인 → 사용자 정보), Google(ID 토큰 JWKS 검증, audience = `GOOGLE_CLIENT_IDS`), Apple(identity token JWKS 검증 + 인가 코드 교환). 실제 키로는 아직 확인하지 않았다 — 키 발급 후 수동 확인 필요. 통합 테스트는 가짜 verifier를 주입한다.
+- 연결 해제 작업(`social_unlink_jobs`)은 **신규 소셜 로그인 시점에 "가입 만료 + 1분"으로 미리 넣는다**. Redis 만료에는 훅이 없어서다. 가입 중단·만 14세 미만이면 실행 시각을 지금으로 당기고, 가입이 끝나면 같은 소셜 계정의 대기 작업을 모두 지운다. Google은 작업을 만들지 않는다. 워커(다음 작업)는 해제 직전 `auth_identities`에 같은 계정이 없는지 다시 확인한다.
+- Apple refresh token은 `TOKEN_ENC_KEY`(AES-256-GCM)로 암호화해 가입 세션·`auth_identities.revoke_token_enc`에 둔다. 운영은 KMS 데이터 키로 바꾼다.
+- 기기: `X-Device-Id`를 `devices.id`로 쓴다. 다른 사용자가 쓰던 기기면 소유자를 바꾸고 푸시 토큰을 비운다. 같은 기기의 이전 세션은 로그인 시 폐기한다.
+
 **탈퇴**
 ```
 DB 트랜잭션: 사용자 데이터 즉시 파기 + race_reports.user_id = null + social_unlink_jobs 1행 기록 → 커밋 → 앱에 완료 응답
@@ -207,7 +213,9 @@ server/src/
                       (각 모듈 index.ts = Fastify 플러그인. 앱 API는 /v1, 관리자는 /api/admin/v1)
 ```
 - 모든 응답에 `X-Request-Id`(UUID v7, 요청 헤더가 있으면 그대로). 로그에서 `authorization`·`cookie`·`x-device-id`는 가린다.
-- 남은 공통 미들웨어: 약관 재동의 게이트(403 `TERMS_REQUIRED`), 최소 앱 버전(426), 요청 제한(Redis), 멱등 키, 관리자 감사 로그.
+- 공통 미들웨어 (T-018 구현): 약관 재동의 게이트 `app.termsGate`(인증 뒤, 게이트 예외 라우트에는 붙이지 않음. 요청마다 현재 필수 약관·동의 2쿼리), 최소 앱 버전 onRequest 훅(`X-App-Version`·`X-Platform`이 있을 때만 검사, `/health`·`/v1/app-config` 예외, `app_configs` 30초 캐시).
+- 남은 공통 미들웨어: 요청 제한(Redis), 멱등 키, 관리자 감사 로그, 점검 모드(503).
+- 공용 계산: 유효 접수 기간·접수 상태 `lib/registration-window.ts`, 접수 알림·홈 접수 임박 대상 조건 `lib/entry-alert-audience.ts` (알림 워커도 이것을 쓴다).
 
 ## 9. 앱 원격 설정 · 강제 업데이트
 
@@ -222,3 +230,4 @@ server/src/
 - 2026-10-21: T-016 — 서버 코드 구조(9-0), 예측 모듈 구현 위치 추가
 - 2026-10-21: D-019 반영 — 알림 kind별 대상 규칙(접수 상태 기준) 표와 대상 확정·발송 직전 재판정, 설명 문장 "참가 등록" → "참가 예정"
 - 2026-10-21: 홈 접수 임박이 N-01~N-03 대상 조건을 공유함을 명시 (PRD v1.5)
+- 2026-10-21: T-018 — 가입 외부 연동 구현 메모(8장: verifier, 연결 해제 작업 예약 방식, 암호화, 기기), 공통 미들웨어 구현 상태(9-0)
