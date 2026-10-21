@@ -77,6 +77,16 @@ curl -X POST localhost:3000/v1/me/predictions \
 - 소셜 로그인은 provider 키(`.env.example`의 `KAKAO_APP_ID` 등)가 있어야 동작한다. 키 없이 화면 흐름을 확인하려면 위 `dev:token`을 쓴다. 통합 테스트는 가짜 verifier를 쓴다.
 - 로그인·가입·토큰 회전은 `JWT_PRIVATE_KEY`, Apple 로그인은 `TOKEN_ENC_KEY`도 필요하다 (`openssl rand -base64 32`).
 
+### 알림 워커 (T-019)
+
+```bash
+pnpm --filter @berun/server notifications:recalc   # 게시된 예정 대회의 알림 예약표 다시 계산 (시드 후 1회)
+pnpm --filter @berun/server worker                 # BullMQ 워커: 1분마다 대상 확정(발송 30분 전) + 발송
+```
+
+- `.env`의 `PUSH_DRY_RUN=true`(운영이 아니면 기본값)이면 Expo로 보내지 않고 로그만 남긴다. 실제 발송은 운영 환경에서만 끈다.
+- 관리자 대회 저장 후에는 `enqueueRaceUpdated(queue, { raceId, notify? })`로 예약표 재계산·N-06을 넣는다 (`server/src/worker/queue.ts`).
+
 ## 스크립트 (루트)
 
 | 명령 | 내용 |

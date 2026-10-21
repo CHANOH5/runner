@@ -751,6 +751,7 @@ const PredictionReq = z.object({
 
 ```ts
 // GET /me/notifications → Page(AppNotification). status = sent 또는 failed (푸시가 실패해도 앱 내 알림은 남는다, PRD 7.1). scheduled·cancelled 제외
+// (T-019) title·body·deepLink는 워커가 발송 시점에 렌더링해 notifications.payload에 저장한 값. 푸시 data = { notificationIds, deepLink }
 // POST /me/notifications/read
 z.union([ z.object({ ids: z.array(Id).min(1).max(100) }), z.object({ all: z.literal(true) }) ])  → 204
 // GET /notices/{id}
@@ -1053,3 +1054,4 @@ v1.1에서 PRD v1.2 대조 요청(handoff `20261021-planner-developer-api-v1-prd
 - 2026-10-21: v1.3 — PRD v1.5 반영. `GET /home/deadlines` 대상을 관심만 ∪ 참가 예정 `not_registered`로 변경 (오픈·마감 행 모두, N-01~N-03과 같은 규칙, 마감 행 시각은 N-03과 같은 기준). 응답 스키마 변경 없음. 대회 당일 변경 가능·앱의 `entryStatus` 항상 전송은 기존 명세와 같음을 표기
 - 2026-10-21: T-018 구현 반영 — 대회 목록·상세 캐시 `no-store`(사용자별 `my` 포함), 목록 쿼리 불리언·메모리 필터 메모, 가입 201·중단 멱등, 참가 예정 서버 기본값일 때 접수 상태 시각·경로 null, `predictionId`·추가 전용 필드 의미, fieldErrors 코드 추가. 요청 스키마의 `.and(GoalInput)`은 같은 계약을 평평한 객체 + 검사로 구현 (`packages/shared/src/registrations.ts`). 구현 엔드포인트 목록은 README
 - 2026-10-21: T-019 — PRD v1.6 반영: `PATCH /me/records/{id}` `confirmDuplicate`·409 `DUPLICATE_RECORD`, `POST /auth/social` `logged_in.reactivated`
+- 2026-10-21: T-019 — 알림 목록 항목의 문구 출처(워커가 발송 시 렌더링해 payload에 저장) 메모
