@@ -29,7 +29,7 @@
 | 작업 큐 | BullMQ (Redis) | SQS | |
 | 파일 저장 | S3 + CloudFront (배번 사진은 비공개 버킷, 서명 URL) | | |
 | 응원 웹 · 관리자 웹 | Next.js | Vite + React | |
-| 대회 데이터 수집 | Playwright 기반 수집기 + 관리자 수동 검수 | 주최사 제휴 API | T-012 |
+| 대회 데이터 수집 | 관리자 입력 + 변경 감지 수집기(`undici`+`cheerio`, 필요한 사이트만 Playwright) → 검수 대기열 | 주최사 셀프 등록·제휴 | T-012, `05-race-data-sourcing.md` |
 | 기록 예측 | 서버 TypeScript 모듈 (Riegel + 보정) → 이후 Python 모델 | | D-004 |
 | AI 설명 생성 | Claude API (Phase 4) | | |
 | 인프라 코드 | AWS CDK (TypeScript) | Terraform | |
@@ -70,3 +70,4 @@
 ---
 ## 변경 이력
 - 2026-10-21: v1 초안 작성
+- 2026-10-21: 대회 데이터 수집 행을 T-012 권장안으로 수정

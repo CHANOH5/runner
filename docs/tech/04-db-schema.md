@@ -13,7 +13,7 @@
 |---|---|---|
 | 계정 | `users`, `auth_identities`, `user_profiles`, `privacy_settings`, `devices` | 1 |
 | 동의 | `terms_versions`, `user_consents` | 1 |
-| 대회 | `races`, `race_events`, `race_courses`, `race_sources`, `race_reports` | 1 |
+| 대회 | `races`, `race_events`, `race_courses`, `race_sources`, `race_candidates`, `race_reports` | 1 |
 | 참가 | `race_interests`, `race_registrations`, `registration_verifications` | 1~2 |
 | 기록·예측 | `run_records`, `predictions` | 1 |
 | 소셜 | `friendships`, `blocks`, `pace_groups`, `pace_group_members`, `meetups`, `reports` | 2 |
@@ -140,6 +140,10 @@ CREATE TABLE races (
   registration_opens_at  timestamptz,
   registration_closes_at timestamptz,
   status          text NOT NULL DEFAULT 'scheduled', -- scheduled | postponed | cancelled | finished (P-RACE-06)
+  publish_status  text NOT NULL DEFAULT 'draft',     -- draft | published | hidden (검수 전 비공개, P-RACE-04 숨김)
+  race_type       text NOT NULL DEFAULT 'road',      -- road | trail | ultra | track | virtual [미정: 포함 범위 기획 결정]
+  registration_method text NOT NULL DEFAULT 'unknown', -- first_come | lottery | unknown
+  dedupe_key      text NOT NULL UNIQUE,              -- 정규화 대회명 + 대회일 + 지역 (중복 방지)
   official_url    text,
   registration_url text,
   last_verified_at timestamptz NOT NULL,        -- 최종 확인일 (P-RACE-02)
@@ -159,7 +163,9 @@ CREATE TABLE race_events (
   start_at        timestamptz,
   time_limit_min  integer,                      -- 제한 시간 (P-LOC-03, 32 계산용)
   fee_krw         integer,
-  capacity        integer
+  capacity        integer,
+  registration_opens_at  timestamptz,           -- 종목별 접수 기간이 대회와 다를 때만 (null이면 races 값 사용)
+  registration_closes_at timestamptz
 );
 CREATE INDEX ON race_events (race_id);
 
@@ -177,10 +183,32 @@ CREATE INDEX ON race_courses USING gist (route);
 CREATE TABLE race_sources (
   id              uuid PRIMARY KEY,
   race_id         uuid NOT NULL REFERENCES races(id) ON DELETE CASCADE,
-  source_name     text NOT NULL,                -- 공식 홈페이지 | 수집기 이름 | 제보
+  source_kind     text NOT NULL,                -- official | organizer | aggregator | news | user_report | manual (05-race-data-sourcing.md)
+  source_name     text NOT NULL,                -- "공식 홈페이지" | 수집기 이름 | "제보"
   source_url      text,
-  fetched_at      timestamptz NOT NULL
+  external_id     text,                         -- 출처 쪽 식별자 (예: 집계 사이트 글 번호)
+  is_primary      boolean NOT NULL DEFAULT false, -- 앱에 "출처"로 표시할 대표 출처 (P-RACE-02)
+  content_hash    text,                         -- 마지막으로 가져온 본문 해시 (변경 감지용, 원문은 저장하지 않음)
+  fetched_at      timestamptz NOT NULL,
+  last_checked_at timestamptz,
+  last_changed_at timestamptz
 );
+CREATE UNIQUE INDEX ON race_sources (race_id) WHERE is_primary;
+
+-- 수집기·주최사·운영자가 올린 신규/변경 후보. 승인되어야 races에 반영 (T-012)
+CREATE TABLE race_candidates (
+  id              uuid PRIMARY KEY,
+  race_id         uuid REFERENCES races(id) ON DELETE CASCADE, -- null이면 신규 대회 후보
+  origin          text NOT NULL,                -- crawler | organizer | admin
+  source_url      text,
+  proposed        jsonb NOT NULL,               -- 추출한 사실 필드만 (대회명, 일시, 장소, 종목, 참가비, 접수기간)
+  diff            jsonb,                        -- 기존 값과 달라진 필드
+  status          text NOT NULL DEFAULT 'pending', -- pending | approved | rejected | duplicate
+  reviewed_by     uuid,                         -- admin_users.id
+  reviewed_at     timestamptz,
+  created_at      timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX ON race_candidates (status, created_at);
 
 CREATE TABLE race_reports (                     -- 정보 오류 제보 (F-016)
   id              uuid PRIMARY KEY,
@@ -488,3 +516,4 @@ CREATE TABLE deletion_jobs (                     -- 파기 배치 실행 기록 
 ---
 ## 변경 이력
 - 2026-10-21: v1 초안 작성
+- 2026-10-21: T-012 반영 — `races`에 `publish_status`, `race_type`, `registration_method`, `dedupe_key` 추가 / `race_events`에 종목별 접수 기간 추가 / `race_sources`에 출처 종류·대표 출처·변경 감지 컬럼 추가 / `race_candidates`(수집 검수 대기열) 신규. 근거: `05-race-data-sourcing.md` 5장
