@@ -18,6 +18,8 @@ export default tseslint.config(
       '@typescript-eslint/consistent-type-imports': 'error',
       '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
       'no-console': ['error', { allow: ['warn', 'error'] }],
+      // Fastify 플러그인은 await 없이 async로 쓰는 것이 관례다
+      '@typescript-eslint/require-await': 'off',
     },
   },
   {
