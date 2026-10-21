@@ -2,7 +2,7 @@
 
 - 담당: 개발자
 - 상태: v1 초안 (검토 대기)
-- DB: PostgreSQL 16 + PostGIS (D-006)
+- DB: PostgreSQL 16 + PostGIS (D-006 확정)
 - 관련: `../planning/02-features.md`, `../planning/04-policies.md`
 
 ---
@@ -18,9 +18,9 @@
 | 기록·예측 | `run_records`, `predictions` | 1 |
 | 소셜 | `friendships`, `blocks`, `pace_groups`, `pace_group_members`, `meetups`, `reports` | 2 |
 | 라이브 | `location_consents`, `live_sessions`, `live_session_viewers`, `cheer_links`, `location_points`, `location_access_logs`, `cheers` | 3 |
-| 알림 | `notifications`, `notification_settings` | 1 |
+| 알림 | `notification_settings`, `notification_schedules`, `notifications`, `notices` | 1 |
 | 결제 | `subscriptions` | 4 |
-| 운영 | `admin_users`, `admin_audit_logs`, `deletion_jobs` | 1 |
+| 운영 | `admin_users`, `admin_audit_logs`, `deletion_jobs`, `social_unlink_jobs`, `account_deletion_stats`, `app_configs` | 1 |
 
 ## 2. ERD (핵심 관계)
 
@@ -64,13 +64,15 @@ CREATE TABLE auth_identities (
   user_id         uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   provider        text NOT NULL,                -- kakao | apple | google
   provider_uid    text NOT NULL,
+  revoke_token_enc bytea,                       -- Apple refresh token (암호화). 탈퇴 시 revoke용 (F-072). 카카오·Google은 null
   created_at      timestamptz NOT NULL DEFAULT now(),
   UNIQUE (provider, provider_uid)
 );
 
 CREATE TABLE user_profiles (
   user_id         uuid PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
-  nickname        varchar(12) NOT NULL UNIQUE,
+  nickname        varchar(12) NOT NULL,
+  nickname_changed_at timestamptz,              -- 7일 1회 변경 제한 (PRD 4.3)
   avatar_url      text,
   gender          text,                         -- male | female | null(미입력)
   region_code     text,                         -- 시·도 코드
@@ -78,6 +80,7 @@ CREATE TABLE user_profiles (
   bio             varchar(100),
   updated_at      timestamptz NOT NULL DEFAULT now()
 );
+CREATE UNIQUE INDEX ON user_profiles (lower(nickname)); -- "Runner" = "runner" 중복 (PRD 4.3)
 
 -- 항목별 공개 범위 (P-PRI-03)
 CREATE TABLE privacy_settings (
@@ -134,16 +137,19 @@ CREATE TABLE races (
   organizer       text,
   region_code     text NOT NULL,
   venue_name      text,
-  venue_point     geography(Point, 4326),
+  venue_address   text,
+  venue_point     geography(Point, 4326),       -- 관리자 웹에서 NCP Geocoding으로 채움, 수동 수정 가능 (D-008)
   race_date       date NOT NULL,
   timezone        text NOT NULL DEFAULT 'Asia/Seoul',
   registration_opens_at  timestamptz,
+  registration_opens_time_known boolean NOT NULL DEFAULT true, -- false면 opens_at은 오픈일 00:00 KST, 시각 미정 (N-02는 09:00)
   registration_closes_at timestamptz,
+  course_url      text,                         -- 공식 코스 안내 링크 (코스 지도는 Phase 1 앱 내 표시 안 함)
   status          text NOT NULL DEFAULT 'scheduled', -- scheduled | postponed | cancelled | finished (P-RACE-06)
   publish_status  text NOT NULL DEFAULT 'draft',     -- draft | published | hidden (검수 전 비공개, P-RACE-04 숨김)
-  race_type       text NOT NULL DEFAULT 'road',      -- road | trail | ultra | track | virtual [미정: 포함 범위 기획 결정]
+  race_type       text NOT NULL DEFAULT 'road',      -- road | trail | ultra | track | virtual. Phase 1은 road만 게시 (D-013, 서버에서 게시 거부)
   registration_method text NOT NULL DEFAULT 'unknown', -- first_come | lottery | unknown
-  dedupe_key      text NOT NULL UNIQUE,              -- 정규화 대회명 + 대회일 + 지역 (중복 방지)
+  dedupe_key      text NOT NULL,                     -- 정규화 대회명 + 대회일 (중복 경고용. 저장은 허용 — PRD 8.4)
   official_url    text,
   registration_url text,
   last_verified_at timestamptz NOT NULL,        -- 최종 확인일 (P-RACE-02)
@@ -153,12 +159,14 @@ CREATE TABLE races (
 CREATE INDEX ON races (race_date);
 CREATE INDEX ON races (region_code, race_date);
 CREATE INDEX ON races (registration_opens_at);
+CREATE INDEX ON races (dedupe_key);
 
 -- 종목 (5K / 10K / Half / Full ...)
 CREATE TABLE race_events (
   id              uuid PRIMARY KEY,
   race_id         uuid NOT NULL REFERENCES races(id) ON DELETE CASCADE,
   name            text NOT NULL,                -- "하프코스"
+  category        text NOT NULL,                -- 5k | 10k | half | full | other (PRD 3.3, 관리자 지정)
   distance_m      integer NOT NULL,             -- 21097
   start_at        timestamptz,
   time_limit_min  integer,                      -- 제한 시간 (P-LOC-03, 32 계산용)
@@ -217,6 +225,9 @@ CREATE TABLE race_reports (                     -- 정보 오류 제보 (F-016)
   field           text,
   message         text NOT NULL,
   status          text NOT NULL DEFAULT 'open', -- open | applied | rejected
+  resolution_note text,                         -- 반려 사유 템플릿 코드 또는 직접 입력 (N-07b)
+  resolved_by     uuid,                         -- admin_users.id
+  resolved_at     timestamptz,                  -- 72시간 처리 KPI (PRD 2.2)
   created_at      timestamptz NOT NULL DEFAULT now()
 );
 ```
@@ -448,16 +459,83 @@ CREATE TABLE notification_settings (
   night_marketing boolean NOT NULL DEFAULT false
 );
 
+-- 대회 단위 알림 예약표 (N-01~N-05). 대회 저장 시 계산, 사용자별 행은 발송 30분 전에 만든다 (03-architecture 6장)
+CREATE TABLE notification_schedules (
+  id              uuid PRIMARY KEY,
+  race_id         uuid NOT NULL REFERENCES races(id) ON DELETE CASCADE,
+  race_event_id   uuid REFERENCES race_events(id) ON DELETE CASCADE, -- 종목별 마감(N-03 참가 등록자)일 때만
+  kind            text NOT NULL,                -- reg_open_d1 | reg_open_soon | reg_close_d1 | race_d7 | race_d1
+  scheduled_at    timestamptz NOT NULL,
+  status          text NOT NULL DEFAULT 'pending', -- pending | materialized | done | cancelled
+  UNIQUE NULLS NOT DISTINCT (race_id, race_event_id, kind)
+);
+CREATE INDEX ON notification_schedules (scheduled_at) WHERE status = 'pending';
+
 CREATE TABLE notifications (
   id              uuid PRIMARY KEY,
   user_id         uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  race_id         uuid REFERENCES races(id) ON DELETE CASCADE,  -- 공지(N-08)면 null
+  notice_id       uuid,                          -- N-08이면 notices.id
   kind            text NOT NULL,
   payload         jsonb NOT NULL,
   scheduled_at    timestamptz NOT NULL,
+  status          text NOT NULL DEFAULT 'scheduled', -- scheduled | sent | cancelled | failed
+  push_group_key  text,                          -- 묶음 발송 키 (user_id + kind + scheduled_at)
   sent_at         timestamptz,
-  read_at         timestamptz
+  read_at         timestamptz,
+  created_at      timestamptz NOT NULL DEFAULT now()
 );
-CREATE INDEX ON notifications (scheduled_at) WHERE sent_at IS NULL;
+CREATE UNIQUE INDEX ON notifications (user_id, race_id, kind, scheduled_at) WHERE race_id IS NOT NULL; -- 중복 방지 (PRD 7.1)
+CREATE INDEX ON notifications (scheduled_at) WHERE status = 'scheduled';
+CREATE INDEX ON notifications (user_id, created_at DESC);
+
+-- 공지·마케팅 푸시 (A-008, N-08)
+CREATE TABLE notices (
+  id              uuid PRIMARY KEY,
+  kind            text NOT NULL,                 -- notice | marketing
+  title           varchar(30) NOT NULL,          -- marketing은 "(광고) " 자동 접두
+  body            varchar(500) NOT NULL,
+  send_push       boolean NOT NULL DEFAULT false,
+  link_type       text NOT NULL,                 -- notice | race | race_list
+  link_race_id    uuid REFERENCES races(id) ON DELETE SET NULL,
+  scheduled_at    timestamptz,                   -- null = 승인 즉시
+  status          text NOT NULL DEFAULT 'draft', -- draft | approved | sent | withdrawn
+  created_by      uuid NOT NULL,                 -- admin_users.id (operator)
+  approved_by     uuid,                          -- admin_users.id (owner)
+  approved_at     timestamptz,
+  sent_count      integer,
+  failed_count    integer,
+  created_at      timestamptz NOT NULL DEFAULT now(),
+  CHECK (kind <> 'marketing' OR scheduled_at IS NULL
+         OR (scheduled_at AT TIME ZONE 'Asia/Seoul')::time BETWEEN '08:00' AND '20:59:59') -- P-NOTI-02
+);
+
+-- 탈퇴 시 외부 소셜 연결 해제 재시도 큐 (F-072). 성공·최종 실패 시 즉시 삭제, 최대 7일 [확인 필요]
+CREATE TABLE social_unlink_jobs (
+  id              bigserial PRIMARY KEY,
+  provider        text NOT NULL,                 -- kakao | apple
+  provider_uid    text NOT NULL,
+  revoke_token_enc bytea,                        -- Apple만
+  attempts        smallint NOT NULL DEFAULT 0,
+  next_attempt_at timestamptz NOT NULL DEFAULT now(),
+  created_at      timestamptz NOT NULL DEFAULT now()
+);
+
+-- 탈퇴 사유 통계 — user_id·시각 없이 날짜만 (PRD 4.15)
+CREATE TABLE account_deletion_stats (
+  id              bigserial PRIMARY KEY,
+  reason_code     text,                          -- no_races | too_many_alerts | bad_prediction | other_app | privacy | other
+  reason_text     varchar(200),
+  deleted_on      date NOT NULL
+);
+
+-- 원격 설정 (강제 업데이트 등). owner만 수정
+CREATE TABLE app_configs (
+  key             text PRIMARY KEY,              -- min_native_version_ios | min_native_version_android | ...
+  value           jsonb NOT NULL,
+  updated_by      uuid,
+  updated_at      timestamptz NOT NULL DEFAULT now()
+);
 
 CREATE TABLE subscriptions (                     -- Phase 4
   id              uuid PRIMARY KEY,
@@ -512,8 +590,12 @@ CREATE TABLE deletion_jobs (                     -- 파기 배치 실행 기록 
 | `live_session_viewers` | 30일 경과 | P-RET |
 | `location_access_logs` | 법정 보존 기간 경과 [확인 필요] | P-LOC-43 |
 | 휴면 계정 | 1년 미접속 (30일 전 안내) | P-RET-03 |
+| `notifications` | 생성 후 90일 | P-RET (PRD 7.1) |
+| `notification_schedules` | `done`·`cancelled` 후 90일 | — |
+| `social_unlink_jobs` | 생성 후 7일 (성공 시 즉시 삭제) | F-072 [확인 필요] |
 
 ---
 ## 변경 이력
 - 2026-10-21: v1 초안 작성
 - 2026-10-21: T-012 반영 — `races`에 `publish_status`, `race_type`, `registration_method`, `dedupe_key` 추가 / `race_events`에 종목별 접수 기간 추가 / `race_sources`에 출처 종류·대표 출처·변경 감지 컬럼 추가 / `race_candidates`(수집 검수 대기열) 신규. 근거: `05-race-data-sourcing.md` 5장
+- 2026-10-21: Phase 1 PRD 요청 반영 (handoff `20261021-planner-developer-phase1-prd-questions.md` B) — `races`: `venue_address`, `registration_opens_time_known`, `course_url` 추가, `dedupe_key` 유니크 해제(중복은 경고만) / `race_events.category` / `user_profiles.nickname_changed_at` + `lower(nickname)` 유니크 / `race_reports` 처리 컬럼 / `auth_identities.revoke_token_enc` / `notifications` 확장 + `notification_schedules`, `notices`, `social_unlink_jobs`, `account_deletion_stats`, `app_configs` 신규 / 파기 배치 3건 추가

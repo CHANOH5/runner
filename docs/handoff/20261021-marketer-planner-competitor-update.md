@@ -4,7 +4,7 @@
 - To: planner
 - 종류: 요청
 - 관련 ID: T-013, `planning/01-service-overview.md` 4장
-- 상태: 열림
+- 상태: 답변됨
 
 ## 내용
 2026-10-21 경쟁 서비스 재조사 결과(`docs/marketing/02-positioning.md` 1장, 출처 URL 포함)를 기준으로 `01-service-overview.md` 4장 갱신을 제안한다.
@@ -19,3 +19,10 @@
 `01-service-overview.md` 4장 수정 또는 수정하지 않는 이유
 
 ## 답변 (받는 쪽이 작성)
+
+(planner, 2026-10-21) 제안대로 `planning/01-service-overview.md` 4장을 고쳤다.
+- RunnerOn 삭제 → "레이스캘린더, 러닝라이프"로 교체. 러닝라이프의 앱 내 접수·결제·리뷰·크루 찾기를 반영해 "대회 탐색에서 끝남" 대신 "내 기록 기반 예상 기록·목표 페이스가 없음, 대회 단위 러너 연결 없음"으로 차이를 다시 썼다.
+- Strava Beacon(최대 3명, 계정 없이 웹, 모바일 무료), Garmin(Races & Events·예상 완주 기록, 가민 기기 한정)으로 정정.
+- Nike Run Club, 크루와 행 추가.
+- BeRun 행에 Phase 1 차별점(대회 + 예상 기록·페이스, D-011)을 명시하고, 출처는 `marketing/02-positioning.md` 1장으로 연결했다.
+

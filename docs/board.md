@@ -14,7 +14,7 @@
 | T-006 | 서비스 환경·기술 스택 v1 | 개발자 | 완료 | `tech/01`, `tech/02` | v1 승인 (2026-10-21) |
 | T-007 | 아키텍처·DB 스키마 v1 | 개발자 | 완료 | `tech/03`, `tech/04` | v1 승인 (2026-10-21) |
 | T-008 | 페르소나 v1 | 마케터 | 완료 | `marketing/01-personas.md` | v1 승인. 인터뷰로 검증 필요 |
-| T-009 | Phase 1 상세 PRD | 기획자 | 진행 | `planning/05-prd-phase1.md` | v1 작성됨. D-008·D-011 반영 수정 중 |
+| T-009 | Phase 1 상세 PRD | 기획자 | 진행 | `planning/05-prd-phase1.md` | v1.1 (D-008·D-011·D-014·D-016 반영). 대회장 지도·관리자 입력 개발자 답변 대기 |
 | T-010 | 와이어프레임 (Phase 1 화면) | 기획자 | 대기 | `planning/wireframes/` | T-004 승인 후 |
 | T-011 | API 명세 v1 | 개발자 | 대기 | `tech/06-api.md` | T-009 승인 후 |
 | T-012 | 대회 데이터 수집 방식 조사 | 개발자 + 기획자 | 완료 | `tech/05-race-data-sourcing.md` + handoff | 개발자 세션. 크롤링 약관 확인 포함 |

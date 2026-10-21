@@ -1,7 +1,7 @@
 # 03. 시스템 아키텍처
 
 - 담당: 개발자
-- 상태: v1 초안 (검토 대기)
+- 상태: v1.1 — D-005~D-008 반영 (2026-10-21)
 - 관련: `02-tech-stack.md`, `04-db-schema.md`, `../planning/04-policies.md`
 
 ---
@@ -52,6 +52,8 @@
 
 ## 3. 실시간 위치 파이프라인 (Phase 3)
 
+> D-007: 업로드는 **HTTPS 배치로 확정**. 시청 배포는 **WebSocket(Fastify + Redis Pub/Sub)으로 시작**하고, MQTT(AWS IoT Core) 전환은 백그라운드 위치 PoC·부하 테스트 후 Phase 2 종료 전에 결정한다. 아래 채널 이름은 전송 방식과 무관하다.
+
 ```
 [러너 앱]
   │ 1) 5초마다 GPS 수집 → 로컬 버퍼(SQLite)
@@ -87,7 +89,7 @@
 
 | 항목 | 방식 |
 |---|---|
-| 사용자 인증 | 소셜 로그인 → 서버 자체 JWT 발급 (access 15분, refresh 30일, 회전) |
+| 사용자 인증 | 소셜 로그인 → 서버 자체 JWT 발급 (access 15분, refresh 30일, 회전). 신규 가입은 Redis 가입 세션(30분)을 거친다 (8장) |
 | 응원 링크 | 128비트 랜덤 토큰, DB에는 해시만 저장 |
 | 관리자 | 별도 계정, 2단계 인증, 접속 IP 제한, 작업 감사 로그 |
 | 저장 데이터 암호화 | RDS·S3 저장 시 암호화, 배번 사진은 비공개 버킷 + 5분 서명 URL |
@@ -106,7 +108,82 @@
 출력: { 예상 기록, 범위(min~max), 신뢰도, 평균 페이스, 구간 스플릿 }
 ```
 - 결과는 `predictions` 테이블에 입력값 스냅샷과 함께 저장한다. 결과 입력(Phase 4) 후 예측 오차를 분석해 모델을 개선한다.
+- 상수·가중치는 `planning/05-prd-phase1.md` 5장 (D-010 `riegel-1.06-v1`). 상수 묶음은 `model_version`별 서버 설정으로 두고, 05 문서 5.7 예시 3개를 단위 테스트 기대값으로 고정한다 (예측일 2026-10-21).
+
+## 6. 앱 지도 구조 (D-008)
+
+Phase 1 사용처: 대회 상세(S-022)의 대회장 위치 지도. 코스 지도는 Phase 1에 앱 내 표시하지 않고 `races.course_url` 링크로 대신한다.
+
+```
+app/src/components/map/
+├── MapView.tsx          ← 화면은 이것만 import (SDK 독립 props)
+├── types.ts             ← LatLng, MapMarker, MapPolyline, CameraPosition, MapViewProps
+├── naver/NaverMapView.tsx   ← @mj-studio/react-native-naver-map 구현 (현재)
+└── (google/GoogleMapView.tsx ← 교체 시 추가)
+```
+
+| 원칙 | 내용 |
+|---|---|
+| SDK 격리 | 화면·훅은 네이버 SDK 타입·컴포넌트를 직접 쓰지 않는다. ESLint `no-restricted-imports`로 `map/` 밖에서의 SDK import 금지 |
+| 최소 props | Phase 1은 `center`, `zoom`, `markers`, `onPressMarker`, `liteMode`(정적 표시)만. 폴리라인(코스)·사용자 위치는 Phase 3에 추가 |
+| 좌표 | 앱·서버 모두 WGS84 `{ lat, lng }`. DB는 `geography(Point, 4326)` (`races.venue_point`) |
+| 비용 관리 | 대회 상세 진입 시 지도는 화면에 보일 때만 마운트(지연 로딩). 리스트·캘린더에는 지도를 쓰지 않는다 (지도 로드 수 = 과금 단위) |
+| 키 관리 | NCP Maps Client ID는 config plugin(`app.config.ts`)에 환경별로 주입. 관리자 웹의 Geocoding은 서버 측 키로만 호출 (앱에 넣지 않음) |
+| 대체 표시 | `venue_point`가 없거나 지도 로드 실패 시 주소 텍스트 + "지도 앱에서 보기"(네이버 지도 앱 URL Scheme / 웹) |
+
+관리자 웹(A-003): 장소 주소 입력 → 서버가 NCP Geocoding 호출 → 후보 선택 → `venue_point` 저장. 실패하면 위·경도 수동 입력 (국내 범위 검증).
+
+## 7. 알림 파이프라인 (Phase 1, F-014)
+
+```
+[관리자 대회 저장] ──▶ notification_schedules 재계산 (대회 단위 N-01~N-05 예약 몇 줄)
+                       │  상태 취소/연기/일정 변경 → N-06 즉시 발송 + 미발송 예약 cancelled
+                       ▼
+[Worker: 매분 스캔] scheduled_at − 30분 도달한 예약
+   1) 대상 확정: 그 시점의 관심 ∪ 참가 등록자 → notifications 행 생성 (status=scheduled, 유니크로 중복 방지)
+   2) push_group_key로 같은 사용자·같은 kind·같은 시각 묶음
+                       ▼
+[Worker: scheduled_at 정각] (N-02는 오픈 −10분 정각)
+   3) 발송 직전 확인: 알림 설정 / 대회 상태 / 대상 유효 / 시각 조건 → 불충족 행 cancelled
+   4) Expo Push 전송: 요청당 100건, 초당 600건 이하로 토큰 버킷 제한
+   5) 실패 1분 간격 3회 재시도 → 그래도 실패면 failed (앱 내 알림은 남음), 무효 토큰은 devices.push_token 삭제
+   6) 15분 뒤 receipt 확인 (Expo 권장)
+```
+- 정시성 KPI(N-02 99%)의 측정 기준은 **서버가 Expo Push에 넘긴 시각**. 대회 하나에 대상 약 10만 명까지 10분 창 안에 처리 가능 [추정 — 부하 테스트로 확인]. 넘으면 FCM/APNs 직접 발송으로 전환.
+- 발송 워커는 2개 이상, BullMQ 반복 작업 + 분산 락. 서버 시계는 NTP 동기화.
+- 공지·마케팅(N-08, `notices`): owner 승인 → 예약 시각에 대상(전체 / 마케팅 동의자) 조회 후 같은 발송 경로. 마케팅은 08:00~20:59만 (DB CHECK + 발송 시 재확인).
+
+## 8. 가입 · 탈퇴의 외부 연동 (F-001, F-072)
+
+**가입 (만 14세 미만 정보 미보관)**
+```
+소셜 SDK 인증 → POST /auth/social  → provider 토큰 검증
+   ├ 기존 계정 → JWT 발급
+   └ 신규 → Redis signup:{랜덤 토큰} (TTL 30분): provider, provider_uid, email, Apple refresh token(암호화)
+             → 앱은 랜덤 토큰만 보유 → S-003 → S-004
+             → POST /auth/signup (토큰) → users 외 6개 테이블 한 트랜잭션 생성 → Redis 삭제
+   중단(만 14세 미만·사용자 취소) → POST /auth/signup/abort → 카카오 unlink / Apple revoke → Redis 삭제
+   만료(30분)                  → 지연 작업이 같은 연결 해제 수행
+```
+- 카카오는 우리 서버가 사용자 정보 API로 토큰을 검증하는 순간 앱 연결을 "가입 완료"로 유지하므로, 가입을 끝내지 않은 사용자는 **우리가 직접 unlink**해야 한다.
+- Apple 인가 코드는 수명이 짧아 로그인 즉시 refresh token으로 교환한다. 가입 완료 시 `auth_identities.revoke_token_enc`에 암호화 저장 (KMS).
+
+**탈퇴**
+```
+DB 트랜잭션: 사용자 데이터 즉시 파기 + race_reports.user_id = null + social_unlink_jobs 1행 기록 → 커밋 → 앱에 완료 응답
+Worker: social_unlink_jobs 처리 — 카카오 unlink(어드민 키 + 회원번호), Apple revoke(refresh token)
+         실패 시 지수 백오프로 최대 24시간 재시도, 성공·최종 실패 시 행 즉시 삭제 (최대 7일 [확인 필요])
+```
+- Google은 앱 로그인에서 ID 토큰만 받으므로 revoke하지 않는다 (사용자가 Google 계정 설정에서 해제 가능).
+- 탈퇴 사유는 `account_deletion_stats`에 user_id·시각 없이 날짜만 저장.
+
+## 9. 앱 원격 설정 · 강제 업데이트
+
+- `GET /app-config` (인증 불필요, CDN 캐시 5분): `min_native_version_{ios,android}` 등 `app_configs` 값.
+- 앱은 스플래시(S-001)에서 스토어 바이너리 버전과 비교 → 미만이면 강제 업데이트 화면.
+- EAS Update(OTA)는 같은 `runtimeVersion` 바이너리에만 배포되므로 **JS만 바뀐 경우는 강제 업데이트하지 않는다.** 네이티브 변경으로 옛 바이너리를 끊어야 할 때만 최소 버전을 올린다.
 
 ---
 ## 변경 이력
 - 2026-10-21: v1 초안 작성
+- 2026-10-21: D-005~D-008 반영 (v1.1) — 실시간 방식 메모, 지도 래퍼 구조(6장), 알림 파이프라인(7장), 가입·탈퇴 외부 연동(8장), 원격 설정·강제 업데이트(9장) 추가
