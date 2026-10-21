@@ -1,12 +1,11 @@
 # 06. API 명세 — Phase 1 (T-011)
 
 - 담당: 개발자
-- 상태: v1 초안 (검토 대기)
-- 기준: `../planning/05-prd-phase1.md` v1.1, `04-db-schema.md`, `03-architecture.md`
+- 상태: v1.1 (PRD v1.2 대조 반영)
+- 기준: `../planning/05-prd-phase1.md` v1.2, `04-db-schema.md`, `03-architecture.md`
 - 관련 결정: D-005~D-008, D-010, D-013, D-014, D-016~D-018
 
 > 표기
-> - `[PRD 변경 대기]` = handoff `20261021-planner-developer-venue-map-admin-input.md` 답변에 따라 PRD 문구가 바뀌어야 맞는 부분. PRD가 바뀌기 전까지 이 명세를 기준으로 구현한다.
 > - `[미정]`, `[확인 필요]`는 공통 규칙과 같다.
 > - 스키마는 **Zod** 기준으로 쓴다. 실제 코드는 앱·서버가 함께 쓰는 `packages/contracts`에 둔다 (tech/02, PRD 3.5). 여기 적은 Zod는 명세용 의사 코드다.
 
@@ -23,7 +22,7 @@
 8. 요청 제한 (rate limit)
 9. 서버가 강제하는 정책 매핑
 10. 앱 화면 ↔ API 매핑
-11. PRD 변경 대기 목록
+11. PRD 반영 이력
 
 ---
 
@@ -101,6 +100,7 @@ const ApiError = z.object({
 | 403 | `TERMS_REQUIRED` | 필수 약관 재동의 필요 | 재동의 화면 (4.2) |
 | 403 | `FORBIDDEN` | 남의 리소스 접근 | 404처럼 처리 |
 | 404 | `NOT_FOUND` | 없음, 또는 초안 대회 | "삭제되었거나 찾을 수 없는…" |
+| 410 | `NOTICE_WITHDRAWN` | 내린 공지 (`notices.status = withdrawn`) | "내려간 공지예요" (8.6) |
 | 410 | `RACE_UNAVAILABLE` | 숨김(`hidden`) 대회 | "더 이상 볼 수 없는 대회예요" (8.4.2) |
 | 409 | `ALREADY_REGISTERED` | 같은 대회 두 번째 참가 등록 | 수정 모드로 (4.10) |
 | 409 | `RACE_CANCELLED` | 취소 대회 참가 등록 | 버튼 비활성 상태 동기화 |
@@ -112,6 +112,7 @@ const ApiError = z.object({
 | 422 | `NICKNAME_CHANGE_COOLDOWN` | 7일 이내 재변경 (`details.availableAt`) | "{M월 D일}부터 바꿀 수 있어요" |
 | 422 | `UNDERAGE` | 만 14세 미만 | 가입 중단 화면 (서버는 가입 세션 폐기 + 소셜 연결 해제) |
 | 422 | `LIMIT_EXCEEDED` | 개수 한도 (`details.limit`, `details.resource`: `records`·`interests`·`registrations`·`prediction_records`) | 각 한도 문구 (4.4, 4.8, 4.10, 4.12) |
+| 422 | `TARGET_DISTANCE_UNSUPPORTED` | 예측 대상 거리가 3,000m 미만 또는 42,195m 초과 (`registration`·`race_event` 대상) | 예측 추천 숨김, 직접 입력·목표 없음만 (4.10, 4.12) |
 | 422 | `NO_ELIGIBLE_RECORDS` | 예측 가능한 기록 0개 (`details.reason`: `none`·`all_older_than_365d`) | S-032 빈 상태 (4.12) |
 | 422 | `GOAL_OUT_OF_RANGE` | 목표 페이스 2'50"~15'00"/km 밖 | "목표 기록을 다시 확인해주세요" |
 | 422 | `PUBLISH_REQUIREMENTS_UNMET` | 관리자 게시 조건 미충족 (`details.missing: string[]`) | 미충족 목록 (8.4.1) |
@@ -154,7 +155,7 @@ const Provider = z.enum(['kakao', 'apple', 'google']);
 
 // ---- 대회 ----
 const RaceStatus = z.enum(['scheduled', 'postponed', 'cancelled', 'finished']);
-// 접수 상태: 서버 계산값, 저장하지 않음 (PRD 4.5 표 순서대로 판정)
+// 접수 상태: 서버 계산값, 저장하지 않음 (PRD 4.5 표 순서대로 판정, 아래 "유효 접수 기간" 규칙 적용)
 const RegistrationState = z.enum([
   'cancelled',        // 취소
   'ended',            // 종료 (대회일 지남 또는 finished)
@@ -164,6 +165,14 @@ const RegistrationState = z.enum([
   'closed',           // 접수 마감
 ]);
 const RegistrationMethod = z.enum(['first_come', 'lottery', 'unknown']);
+
+/* 유효 접수 기간 (PRD 4.5, 7.1) — registrationState, RaceSummary.registrationOpensAt/ClosesAt,
+   home/deadlines, notification_schedules가 모두 이 한 함수를 쓴다.
+   1) 대회 기간(races.registration_opens_at/closes_at)이 둘 다 비어 있고 종목별 기간이 있으면
+      opensAt = 종목 중 가장 이른 오픈, closesAt = 종목 중 가장 늦은 마감 (한쪽만 있는 값도 각각 집계)
+   2) closesAt이 없으면 "대회 전날 23:59:59 KST"까지 접수 중으로 본다 (판정용. 응답의 registrationClosesAt은 null 그대로)
+   3) 참가 등록자의 N-03(reg_close_d1)은 등록한 종목의 마감(종목 값 → 없으면 유효 closesAt)을 쓴다
+      → notification_schedules에 race_event_id 행으로 따로 둔다. closesAt이 없으면 N-03은 만들지 않는다 */
 
 const RaceEvent = z.object({
   id: Id,
@@ -186,9 +195,9 @@ const RaceSummary = z.object({              // 리스트 카드 (PRD 4.5)
   categories: z.array(DistanceCategory),     // 분류 순서, 중복 제거
   status: RaceStatus,
   registrationState: RegistrationState,
-  registrationOpensAt: DateTime.nullable(),  // D-n 표시용
+  registrationOpensAt: DateTime.nullable(),  // 유효 접수 기간(위 규칙 1) 적용값. D-n 표시용
   registrationOpensTimeKnown: z.boolean(),
-  registrationClosesAt: DateTime.nullable(),
+  registrationClosesAt: DateTime.nullable(),  // 유효 접수 기간 적용값. null이면 앱은 마감 "미정" 표시
   registrationMethod: RegistrationMethod,    // unknown이면 앱이 배지 숨김
   dDay: z.number().int().nullable(),         // 대회일까지 남은 일수 (KST). 지난 대회 null
   my: z.object({                             // 로그인 사용자 기준
@@ -225,6 +234,8 @@ const RegistrationBrief = z.object({
   id: Id,
   raceEventId: Id,
   eventName: z.string(),
+  eventDistanceM: z.number().int(),
+  predictionSupported: z.boolean(),          // 3,000 ≤ 종목 거리 ≤ 42,195. false면 S-032 "예측 미지원 거리" 회색 (PRD 4.12)
   goalTimeSec: z.number().int().nullable(),
   goalPaceSecPerKm: z.number().int().nullable(),
 });
@@ -473,7 +484,7 @@ z.object({ items: z.array(RaceSummary), nextCursor: z.string().nullable() })
 ```
 - 기본 조건: `publish_status = 'published'`, `race_date ≥ 오늘`(`includeEnded=false`), 정렬 `race_date, name`.
 - **검색(`q`가 있을 때)**: 지난 대회도 포함하고 **예정 대회 전부 → 지난 대회(최근 순)** 순서로 돌려준다. 각 항목의 `registrationState === 'ended'`로 앱이 "지난 대회" 구분선을 그린다 (PRD 4.6).
-- 참가비 구간 경계: `le30k` = ≤ 30,000 / `30k_50k` = 30,001~50,000 / `50k_100k` = 50,001~100,000 / `gt100k` = > 100,000. `[PRD 확인]` 경계값 포함 규칙을 PRD 4.6에 명시 요청 (경계 30,000원·50,000원·100,000원이 어느 구간인지).
+- 참가비 구간 경계 (PRD 4.6, 경계값은 낮은 구간에 포함): `le30k` = ≤ 30,000 / `30k_50k` = 30,001~50,000 / `50k_100k` = 50,001~100,000 / `gt100k` = > 100,000.
 - 구현: 검색은 PostgreSQL `pg_trgm` + 공백 제거 정규화 컬럼. 대회 수백 개 규모라 충분하다.
 
 ```ts
@@ -491,7 +502,7 @@ z.object({
 // 404 NOT_FOUND: 없음 또는 draft
 // 410 RACE_UNAVAILABLE: hidden (관심·참가 등록자 포함 모두에게. 앱은 "더 이상 볼 수 없는 대회예요")
 ```
-- 대회장 지도: 앱은 `venue.lat/lng`가 있으면 미니 지도, 없으면 안내 박스 (PRD 4.7). 다크 모드에서도 기본 지도 `[PRD 변경 대기]` (4.7 야간 스타일 문구).
+- 대회장 지도: 앱은 `venue.lat/lng`가 있으면 미니 지도, 없으면 안내 박스 (PRD 4.7). 다크 모드에서도 기본(밝은) 지도 (PRD 4.7, 커스텀 다크 스타일은 Q-18).
 - [길찾기]·[지도 앱에서 검색]은 서버 호출 없이 앱이 URL 스킴으로 연다 (handoff 답변 2번).
 
 ### 6.5 홈 (S-010)
@@ -501,7 +512,7 @@ z.object({
 |---|---|---|
 | `GET /home/next-race` | 사용자 | 내 다음 대회 카드 |
 | `GET /home/deadlines` | 사용자 | 접수 임박 (관심 ∪ 참가, 7일 안 오픈 / 3일 안 마감, 최대 5개) |
-| `GET /home/recommended` | 사용자 | 추천 대회 (내 지역, 90일 이내, 최대 10개, 3개 미만이면 전국 관심 많은 순 보충) |
+| `GET /home/recommended` | 사용자 | 추천 대회 (아래 조건) |
 | `GET /me/notifications/unread-count` | 사용자 | 벨 배지 (6.10 참고) |
 
 ```ts
@@ -523,6 +534,12 @@ z.object({ items: z.array(z.object({
 // GET /home/recommended
 z.object({ regionCode: RegionCode, items: z.array(RaceSummary), filledNationwide: z.boolean() })
 ```
+- 추천 조건 (PRD 6.7 ④): 게시된 대회 중
+  1. `region_code` = 내 지역, 대회일 오늘 ~ 오늘+90일
+  2. `registrationState` ∈ {`upcoming`, `open`, `unscheduled`} (취소·마감·종료 제외)
+  3. **내가 관심 또는 참가 등록한 대회 제외**
+  4. 대회일 순 최대 10개
+  5. 3개 미만이면 **전국** 대회 중 2·3과 대회일 조건(오늘~90일)을 똑같이 적용해 관심 수 많은 순으로 10개까지 보충 (`filledNationwide = true`). 같은 대회는 중복하지 않는다
 
 ### 6.6 관심 대회 (F-013)
 | 메서드·경로 | 인증 | 설명 |
@@ -579,7 +596,8 @@ const Registration = z.object({
   goalTimeSec: z.number().int().nullable(),
   goalPaceSecPerKm: z.number().int().nullable(),   // 서버 계산 round(goal / (distanceM/1000))
   goalSource: z.enum(['prediction', 'manual', 'none']),
-  predictionId: Id.nullable(),                     // 목표 있으면 등록 시점 예측을 계산·저장하고 연결 (4.10 ⑥)
+  predictionId: Id.nullable(),                     // 목표 있으면 등록 시점 예측을 계산·저장하고 연결 (4.10 ⑥). 예측 미지원 거리·기록 없음이면 null
+  predictionSupported: z.boolean(),
   interestAutoEnabled: z.boolean(),
   showOfficialRegistrationNotice: z.boolean(),     // 접수 예정·접수 중이면 true → 바텀시트 (P-RACE-01)
   warnings: z.array(z.enum(['GOAL_OVER_TIME_LIMIT'])),
@@ -595,9 +613,14 @@ z.object({ raceEventId: Id.optional() }).and(GoalInput.optional())
 
 // DELETE /registrations/{id} → 204. predictions.race_registration_id = null, 관심 유지, 대회일 지났으면 409 RACE_FINISHED
 
-// GET /registrations/{id}/strategy → Prediction (+ goal 기준 스플릿)
-z.object({ prediction: Prediction.nullable(), goalSplits: z.object({ even: z.array(SplitRow), negative: z.array(SplitRow) }).nullable() })
-// prediction null = 예측 가능한 기록 없음. goalSplits = 목표 기록 기준 스플릿 (4.13 "목표 기준" 토글)
+// GET /registrations/{id}/strategy
+z.object({
+  prediction: Prediction.nullable(),
+  predictionUnavailableReason: z.enum(['no_records', 'unsupported_distance']).nullable(), // prediction이 null일 때만 값
+  goalSplits: z.object({ even: z.array(SplitRow), negative: z.array(SplitRow) }).nullable(), // 목표 기록 기준 (4.13 "목표 기준")
+})
+// unsupported_distance: 예측은 계산하지 않고 goalSplits만 (목표 없으면 둘 다 null). 스플릿 계산(PRD 5.6)은 거리 제한이 없다
+//   (< 15,000m → 1km 단위, ≥ 15,000m → 5km 단위. 50km·100km도 그대로 동작)
 ```
 - 목표 검증: 페이스 = goalTimeSec ÷ (distanceM/1000), **170 ≤ 페이스 ≤ 900초/km** (2'50"~15'00"). 제한 시간 초과는 경고만.
 
@@ -669,8 +692,10 @@ const PredictionReq = z.object({
   recordIds: z.array(Id).min(1).max(5).nullable(),      // null = 자동 선택. 값 있으면 고른 기록만, 같은 가중치 (5.2)
 });
 // 응답: Prediction (preview는 id·createdAt null)
-// 에러: 422 NO_ELIGIBLE_RECORDS, 400 (recordIds 중 eligible 아닌 것 → fieldErrors), 422 LIMIT_EXCEEDED(resource=prediction_records, limit=5)
+// 에러: 422 TARGET_DISTANCE_UNSUPPORTED (registration·race_event 대상 거리가 3,000~42,195m 밖. distance 대상은 스키마에서 400),
+//       422 NO_ELIGIBLE_RECORDS, 400 (recordIds 중 eligible 아닌 것 → fieldErrors), 422 LIMIT_EXCEEDED(resource=prediction_records, limit=5)
 ```
+- 거리 검사는 기록 조회보다 먼저 한다 (미지원 거리면 기록이 없어도 `TARGET_DISTANCE_UNSUPPORTED`).
 - 계산은 서버에서만 한다 (PRD 5장). 같은 입력·같은 날짜 → 같은 결과 (결정적). 예측일 = 요청 시각의 KST 날짜.
 - `GET /me/predictions` 응답 항목은 `Prediction`에서 `splits`·`usedRecords`를 뺀 요약형 (`PredictionSummary`).
 
@@ -680,14 +705,27 @@ const PredictionReq = z.object({
 | `GET /me/notifications` | 사용자 | 최근 90일, 커서 20개 |
 | `GET /me/notifications/unread-count` | 사용자 | `{ count }` (앱은 99+ 처리) |
 | `POST /me/notifications/read` | 사용자 | 읽음 처리 |
-| `GET /notices/{noticeId}` | 사용자 | 공지 상세 (웹뷰가 아닌 앱 화면에서 쓸 때. 웹뷰 URL은 `https://berun.app/notices/{id}` `[미정]`) |
+| `GET /notices/{noticeId}` | 사용자 | 공지 상세 — **앱 화면**으로 표시 (웹뷰·공지 웹 페이지 없음, PRD 8.6) |
 
 ```ts
 // GET /me/notifications → Page(AppNotification). status = sent 또는 failed (푸시가 실패해도 앱 내 알림은 남는다, PRD 7.1). scheduled·cancelled 제외
 // POST /me/notifications/read
 z.union([ z.object({ ids: z.array(Id).min(1).max(100) }), z.object({ all: z.literal(true) }) ])  → 204
 // GET /notices/{id}
-z.object({ id: Id, kind: z.enum(['notice', 'marketing']), title: z.string(), body: z.string(), publishedAt: DateTime })
+z.object({
+  id: Id,
+  kind: z.enum(['notice', 'marketing']),
+  title: z.string(),                      // marketing은 "(광고) " 포함
+  body: z.string(),                       // 일반 텍스트. 앱이 줄바꿈 유지·URL 자동 링크(인앱 브라우저)
+  publishedAt: DateTime,
+  link: z.discriminatedUnion('type', [    // 하단 이동 버튼. notice면 버튼 없음
+    z.object({ type: z.literal('notice') }),
+    z.object({ type: z.literal('race'), raceId: Id }),
+    z.object({ type: z.literal('race_list') }),
+  ]),
+})
+// 410 NOTICE_WITHDRAWN: 관리자가 내린 공지 → 앱은 "내려간 공지예요" (S-011 목록의 해당 알림 행은 그대로 둔다)
+// 404 NOT_FOUND: 없음 또는 아직 발송 전(draft·approved 예약 대기)
 ```
 - 푸시 페이로드(`data`): `{ notificationIds: string[], deepLink: string }`. 묶음 푸시는 `deepLink = berun://notifications` (PRD 7.3). 앱은 푸시 탭으로 열리면 해당 알림을 읽음 처리한다.
 
@@ -748,9 +786,12 @@ const AdminRaceEventInput = z.object({
   timeLimitMin: z.number().int().min(30).max(720).nullable(),
   feeKrw: z.number().int().min(0).max(1_000_000).nullable(),
   capacity: z.number().int().min(1).max(100_000).nullable(),
-  registrationOpensAt: DateTime.nullable(),
-  registrationClosesAt: DateTime.nullable(),
+  registrationOpensAt: DateTime.nullable(),      // 종목별 접수 기간 — 관리자 표의 접힌 "고급" 칸 (PRD 8.4.2)
+  registrationClosesAt: DateTime.nullable(),     // 대회 접수 기간과 다를 때만 입력
 });
+// 검증 (AdminRaceInput.superRefine에서 대회일과 함께): 둘 중 하나만 있어도 저장 가능.
+//   opensAt < closesAt (둘 다 있을 때), closesAt < 대회일 00:00 KST, opensAt < 대회일 00:00 KST
+//   위반 시 400 fieldErrors path 예: "events[2].registrationClosesAt", code: "after_race_date" | "before_opens_at"
 
 const AdminRaceInput = z.object({
   name: z.string().trim().min(2).max(60),
@@ -782,7 +823,7 @@ const AdminRaceInput = z.object({
 });
 
 // POST /races (초안): AdminRaceInput.partial().required({ name: true, raceDate: true, regionCode: true })
-// 신규 작성은 last_verified_at = now() 자동. 복제 초안은 null [PRD 변경 대기: 8.4.2 최종 확인일 문구]
+// 신규 작성은 last_verified_at = now() 자동. 복제 초안은 null — 대표 출처 확인 일시도 같은 규칙 (PRD 8.4.2)
 
 // PUT /races/{id} 응답
 z.object({
@@ -811,7 +852,7 @@ z.object({
 // POST /races/{id}/clone
 z.object({ shiftDates: z.boolean().optional() })   // 기본: 원본 대회일 < 오늘이면 true
 // 응답: AdminRace (새 초안) + shiftedFields: string[] (노란 강조용) + renamed: { year: boolean, edition: boolean }
-// 규칙: 날짜 +364일(52주) [PRD 변경 대기: 8.4.4 "+52주" 병기], 대회명 첫 20\d\d → 새 연도, 첫 제N회 → N+1
+// 규칙: 날짜 +364일(52주) (PRD 8.4.4), 대회명 첫 20\d\d → 새 연도, 첫 제N회 → N+1
 //       종목 복사, 대표 출처 URL만 복사(확인 일시 null), last_verified_at null, status scheduled, publish draft,
 //       races.cloned_from = 원본, 감사 로그 memo = 원본 id
 
@@ -859,7 +900,7 @@ z.object({
 | `GET /notices/{id}/audience` | OP | 대상 수 (확인 모달) |
 | `POST /notices/{id}/test` | OP | `{ userId }` 테스트 1건 |
 | `POST /notices/{id}/approve` | O | 승인 → 즉시 발송 또는 예약. **owner가 작성한 공지는 작성자 본인이 바로 승인** (PRD 8.6, D-014) |
-| `POST /notices/{id}/withdraw` | OP | 앱 내 공지 내리기 (발송 후 수정 불가, 내리기만) |
+| `POST /notices/{id}/withdraw` | OP | 앱 내 공지 내리기 (발송 후 수정 불가, 내리기만). 이후 앱 `GET /notices/{id}`는 410 `NOTICE_WITHDRAWN` |
 
 ```ts
 const NoticeInput = z.object({
@@ -947,17 +988,20 @@ Redis 슬라이딩 윈도우. 초과 시 429 `RATE_LIMITED` + `Retry-After`.
 | S-065 개인정보·약관 | `GET /me/consents`, 마케팅 토글은 `PATCH /me/notification-settings` |
 | S-066 탈퇴 | `DELETE /me` |
 
-## 11. PRD 변경 대기 목록
+## 11. PRD 반영 이력
 
-handoff `20261021-planner-developer-venue-map-admin-input.md` 답변으로 PRD 문구가 바뀌어야 하는 곳. 이 명세는 **바뀐 내용을 기준**으로 썼다.
+v1에서 `[PRD 변경 대기]`로 표시했던 4건은 PRD v1.2에 모두 반영되어 표시를 지웠다.
 
-| # | PRD 위치 | 현재 | 이 명세 기준 |
-|---|---|---|---|
-| 1 | 4.7 전체 화면 지도 "다크 모드 야간 스타일" | SDK가 지원하면 야간 스타일 | Phase 1은 다크 모드에서도 기본 지도 (네이버 SDK 야간 모드는 Navi 지도 전용) |
-| 2 | 8.4.2 최종 확인일 | 신규 저장 시 오늘 | 신규 작성 = 오늘 자동, **복제 초안 = 비움** (게시 전 확인 필수) |
-| 3 | 8.4.4 날짜 이동 | +1년, 같은 요일 가장 가까운 날짜 | 같은 뜻으로 **+364일(52주)** 병기 |
-| 4 | 4.6 참가비 필터 | 3만 원 이하 / 3~5만 / 5~10만 / 10만 초과 | 경계 포함 규칙 명시 요청 (이 명세: ≤30,000 / 30,001~50,000 / 50,001~100,000 / >100,000) |
+| # | PRD v1.2 위치 | 내용 |
+|---|---|---|
+| 1 | 4.7 | Phase 1은 다크 모드에서도 기본(밝은) 지도. 커스텀 다크 스타일은 비용 확인 후 (Q-18) |
+| 2 | 8.4.2 | 최종 확인일·대표 출처 확인 일시: 신규 작성 = 오늘 자동, 복제 초안 = 비움 |
+| 3 | 8.4.4 | 날짜 이동 = +364일(52주) |
+| 4 | 4.6 | 참가비 경계값은 낮은 구간에 포함 |
+
+v1.1에서 PRD v1.2 대조 요청(handoff `20261021-planner-developer-api-v1-prd-v1.2-gaps.md`) 5건을 반영했다: 공지 상세 앱 화면·410 `NOTICE_WITHDRAWN`, 예측 미지원 거리 `TARGET_DISTANCE_UNSUPPORTED`·`predictionUnavailableReason`, 추천 대회 조건, 유효 접수 기간 규칙, 종목별 접수 기간 검증.
 
 ---
 ## 변경 이력
 - 2026-10-21: v1 초안 작성 (T-011). PRD v1.1 기준 앱 API·관리자 API·에러·페이지네이션·요청 제한. 스키마 보완은 `04-db-schema.md` 변경 이력 참조
+- 2026-10-21: v1.1 — PRD v1.2 대조 반영 (handoff `20261021-planner-developer-api-v1-prd-v1.2-gaps.md`). 공지 상세: 웹뷰 URL 삭제, `link` 필드, 내린 공지 410 `NOTICE_WITHDRAWN`. 예측 미지원 거리: 422 `TARGET_DISTANCE_UNSUPPORTED`, strategy `predictionUnavailableReason`, `RegistrationBrief.predictionSupported`·`eventDistanceM`, 스플릿 거리 무제한. 추천 대회 조건 명시. 유효 접수 기간 규칙(종목 기간 집계, 마감 없음 = 대회 전날까지, 참가자 N-03 종목 마감). 관리자 종목별 접수 기간 검증. `[PRD 변경 대기]`·`[PRD 확인]` 표시 정리

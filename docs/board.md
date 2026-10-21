@@ -14,9 +14,9 @@
 | T-006 | 서비스 환경·기술 스택 v1 | 개발자 | 완료 | `tech/01`, `tech/02` | v1 승인 (2026-10-21) |
 | T-007 | 아키텍처·DB 스키마 v1 | 개발자 | 완료 | `tech/03`, `tech/04` | v1 승인 (2026-10-21) |
 | T-008 | 페르소나 v1 | 마케터 | 완료 | `marketing/01-personas.md` | v1 승인. 인터뷰로 검증 필요 |
-| T-009 | Phase 1 상세 PRD | 기획자 | 진행 | `planning/05-prd-phase1.md` | v1.2. API 명세와의 차이 5건은 개발자가 반영 중 |
+| T-009 | Phase 1 상세 PRD | 기획자 | 완료 | `planning/05-prd-phase1.md` | v1.2 승인 (API 명세 v1.1과 정합) |
 | T-010 | 와이어프레임 (Phase 1 화면) | 기획자 | 대기 | `planning/wireframes/` | T-004 승인 후 |
-| T-011 | API 명세 v1 | 개발자 | 검토 | `tech/06-api.md` | v1 작성. PRD v1.2 대조 차이 5건 반영 중 |
+| T-011 | API 명세 v1 | 개발자 | 완료 | `tech/06-api.md` | v1.1 승인 (PRD v1.2와 정합) |
 | T-012 | 대회 데이터 수집 방식 조사 | 개발자 + 기획자 | 완료 | `tech/05-race-data-sourcing.md` + handoff | 개발자 세션. 크롤링 약관 확인 포함 |
 | T-013 | 포지셔닝·메시지 | 마케터 | 완료 | `marketing/02-positioning.md` | 서비스명은 보류 (D-009) |
 | T-014 | 러너 인터뷰 10명 (질문지 포함) | 마케터 | 대기 | `marketing/04-validation.md` | 질문지·랜딩 문구 완료. 인터뷰는 보류 (D-015) |

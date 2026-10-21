@@ -36,7 +36,7 @@
 | 인프라 코드 | AWS CDK (TypeScript) | Terraform | |
 | CI/CD | GitHub Actions, EAS Build / EAS Update | | |
 | 모니터링 | Sentry (앱·서버), CloudWatch | Datadog | |
-| 제품 분석 | **PostHog 권장** (이벤트 과금, 자체 호스팅 이전 가능) | Amplitude, Firebase Analytics | [미정] — 오케스트레이터 결정 요청 |
+| 제품 분석 | **PostHog** — 내부 `user_id`만 전송, 이메일·좌표·닉네임 미전송 (P-PRI-08) | Amplitude, Firebase Analytics | **D-017 확정** |
 
 ## 2. 주요 선택 이유
 
@@ -79,3 +79,4 @@
 - 2026-10-21: v1 초안 작성
 - 2026-10-21: 대회 데이터 수집 행을 T-012 권장안으로 수정
 - 2026-10-21: D-005~D-008, D-016 반영 — 확정 표시, 지도 래퍼·지오코딩·푸시 한도 추가, 실시간 절 정리, 분석 도구 PostHog 권장
+- 2026-10-21: 제품 분석 PostHog 확정 표시 (D-017)

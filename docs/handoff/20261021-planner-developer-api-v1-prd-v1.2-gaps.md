@@ -4,7 +4,7 @@
 - To: developer
 - 종류: 요청
 - 관련 ID: F-010, F-012, F-014, F-015, F-020, F-021, S-010, S-011, S-023, S-032, S-033, A-003, A-008, `tech/06-api.md`
-- 상태: 열림
+- 상태: 답변됨
 
 ## 내용
 
@@ -30,3 +30,21 @@
 - 1·2번 기획 결정이 구현에 부담이 크면 PRD 해당 절을 지목해 알려 달라.
 
 ## 답변 (받는 쪽이 작성)
+
+(developer, 2026-10-21 — `tech/06-api.md` v1.1, 변경 이력 기록. DB 변경 없음)
+
+1. **반영 (410 방식).** 웹뷰 URL을 삭제하고 `GET /notices/{id}`만 쓴다. 응답에 하단 버튼용 `link`(notice / race / race_list)를 추가했다. 내린 공지는 **410 `NOTICE_WITHDRAWN`** → 앱 "내려간 공지예요". S-011 목록의 해당 알림 행은 그대로 남는다. 아직 발송 전인 공지는 404다.
+2. **반영.** `registration`·`race_event` 대상 거리가 3,000~42,195m 밖이면 `preview`·`POST /me/predictions`가 422 `TARGET_DISTANCE_UNSUPPORTED`를 준다. 거리 검사를 기록 조회보다 먼저 한다.
+   - `GET /registrations/{id}/strategy`는 `prediction: null` + `predictionUnavailableReason: 'no_records' | 'unsupported_distance'` + `goalSplits`를 준다.
+   - S-032 회색 처리용으로 `RegistrationBrief.predictionSupported`·`eventDistanceM`을 추가했다.
+   - 참가 등록 응답에도 `predictionSupported`가 있다 (`predictionId`는 null).
+   - 스플릿 계산(5.6)은 거리 제한 없이 동작한다. 구현 부담 작음.
+3. **반영.** `GET /home/recommended` 아래에 조건 5줄을 명시했다. 보충분도 같은 조건(접수 상태, 관심·참가 제외, 90일)을 쓰고 중복은 없다.
+4. **반영.** 5장에 "유효 접수 기간" 규칙을 한 곳에 정의했다. `registrationState`, 목록 응답의 오픈·마감 시각, 홈 접수 임박, 알림 예약표가 모두 이 규칙을 쓴다.
+   - 대회 기간이 비어 있으면 종목 중 가장 이른 오픈·가장 늦은 마감
+   - 마감이 없으면 대회 전날 23:59:59 KST까지 접수 중 (응답의 마감 값은 null 그대로)
+   - 참가자의 N-03은 등록 종목의 마감, 마감이 없으면 N-03을 만들지 않음
+   - **기획 확인 1건:** 마감이 전혀 없는 대회는 N-03(마감 전날 알림)을 보내지 않는다. 이대로 괜찮은지 확인해 달라. 대회 전날 기준으로 보내면 대회 이틀 전 19:00 "접수가 내일 마감돼요"가 되어 사실과 다를 수 있다.
+5. **반영.** `AdminRaceEventInput`에 검증을 추가했다. 둘 중 하나만 있어도 저장되고, 오픈 < 마감, 마감·오픈 < 대회일 00:00 KST다. 위반 시 400이고 fieldErrors path는 `events[i].registrationClosesAt`, code는 `after_race_date` / `before_opens_at`.
+6. **확인.** PostHog(D-017)는 `tech/02-tech-stack.md`에 확정으로 표시했다. API에는 분석 관련 엔드포인트가 없다 (앱 SDK가 직접 전송).
+- `[PRD 변경 대기]`·`[PRD 확인]` 표시는 모두 지웠다. 06 문서 11장은 "PRD 반영 이력"으로 바꿨다.
