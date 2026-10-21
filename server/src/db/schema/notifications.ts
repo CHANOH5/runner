@@ -6,6 +6,7 @@ import {
   integer,
   jsonb,
   pgTable,
+  smallint,
   text,
   unique,
   uniqueIndex,
@@ -72,7 +73,14 @@ export const notifications = pgTable(
     status: text('status').notNull().default('scheduled'),
     /** 묶음 발송 키 (user_id + kind + scheduled_at) */
     pushGroupKey: text('push_group_key'),
+    /** 서버가 푸시 서비스(Expo)에 넘긴 시각 — 정시성 KPI 기준 (D-018) */
     sentAt: timestamptz('sent_at'),
+    /** 푸시 실패 횟수. 1분 간격 최대 3회 재시도 (PRD 7.1) */
+    attemptCount: smallint('attempt_count').notNull().default(0),
+    /** 다음 발송 시도 시각. 워커가 집어 갈 때는 임대(lease) 만료 시각으로도 쓴다 */
+    nextAttemptAt: timestamptz('next_attempt_at'),
+    /** 마지막 실패 사유 (A-002 실패 집계) */
+    lastError: text('last_error'),
     readAt: timestamptz('read_at'),
     createdAt: createdAt(),
   },

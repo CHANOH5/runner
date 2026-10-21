@@ -39,6 +39,12 @@ export const Env = DatabaseEnv.extend({
   APPLE_TEAM_ID: z.preprocess(emptyToUndefined, z.string().optional()),
   APPLE_KEY_ID: z.preprocess(emptyToUndefined, z.string().optional()),
   APPLE_PRIVATE_KEY: z.preprocess(emptyToUndefined, pem.optional()),
+  /** 알림 워커: true면 Expo로 보내지 않고 로그만 (운영이 아니면 기본 true) */
+  PUSH_DRY_RUN: z.preprocess(emptyToUndefined, z.enum(['true', 'false']).optional()),
+  /** Expo "enhanced security"를 켰을 때만 필요한 access token */
+  EXPO_ACCESS_TOKEN: z.preprocess(emptyToUndefined, z.string().optional()),
+  /** 워커 1개당 초당 발송 한도. Expo 프로젝트 한도 600/초를 워커 수로 나눈다 */
+  EXPO_PUSH_RATE_PER_SEC: z.coerce.number().int().min(1).max(600).default(300),
 });
 
 export type SocialConfig = {
@@ -58,6 +64,7 @@ export type Config = {
   jwtPrivateKey: string | undefined;
   tokenEncKey: string | undefined;
   social: SocialConfig;
+  push: { dryRun: boolean; expoAccessToken: string | undefined; ratePerSec: number };
 };
 
 export class ConfigError extends Error {
@@ -86,6 +93,11 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): Config {
     jwtPublicKey: env.JWT_PUBLIC_KEY,
     jwtPrivateKey: env.JWT_PRIVATE_KEY,
     tokenEncKey: env.TOKEN_ENC_KEY,
+    push: {
+      dryRun: env.PUSH_DRY_RUN ? env.PUSH_DRY_RUN === 'true' : env.NODE_ENV !== 'production',
+      expoAccessToken: env.EXPO_ACCESS_TOKEN,
+      ratePerSec: env.EXPO_PUSH_RATE_PER_SEC,
+    },
     social: {
       kakao: env.KAKAO_APP_ID ? { appId: env.KAKAO_APP_ID } : null,
       google: env.GOOGLE_CLIENT_IDS
