@@ -588,6 +588,7 @@ CREATE TABLE subscriptions (                     -- Phase 4
   current_period_end timestamptz
 );
 
+-- (T-020) 비밀번호 argon2id(@node-rs/argon2), TOTP 비밀키는 TOKEN_ENC_KEY(AES-256-GCM)로 암호화. 이메일은 소문자로 저장
 CREATE TABLE admin_users (
   id              uuid PRIMARY KEY,
   email           text NOT NULL UNIQUE,
@@ -652,3 +653,4 @@ CREATE TABLE deletion_jobs (                     -- 파기 배치 실행 기록 
 - 2026-10-21: D-019 반영 (handoff `20261021-planner-developer-entry-status.md`) — `race_registrations`에 `entry_status`(CHECK, 기본 `not_registered`)·`entry_status_updated_at`·`entry_status_source`(CHECK) 추가, `(race_id, entry_status)` 인덱스. 설명 문장의 "참가 등록" → "참가 예정". 테이블 이름은 유지 (이름 규칙 메모 추가)
 - 2026-10-21: T-018 구현 — 마이그레이션 `0003_entry_status.sql`로 `entry_status`·`entry_status_updated_at`·`entry_status_source`·`(race_id, entry_status)` 인덱스 적용. API 응답 `Registration.goalSource`를 저장할 곳이 없어 **`goal_source` 컬럼 추가** (CHECK: 값 3개 + `none` ⇔ 목표 없음). 기존 행은 목표가 있으면 `manual`로 채움
 - 2026-10-21: T-019 — `notifications`에 `attempt_count`·`next_attempt_at`·`last_error` 추가 (마이그레이션 `0004_notification_delivery.sql`). `payload`에 렌더링한 `title`·`body`·`deepLink`, `scheduleId`, `raceEventId`, `registrationId`, 푸시 티켓 요약을 둔다
+- 2026-10-21: T-020 — 마이그레이션 `0005_notification_list_index.sql`: `notifications (user_id, scheduled_at DESC, id DESC)` (알림 목록). 관리자 비밀번호·TOTP 저장 방식 메모. 파기 배치 `notifications_90d`·`notification_schedules_90d`가 `deletion_jobs`에 기록

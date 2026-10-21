@@ -72,6 +72,8 @@ curl -X POST localhost:3000/v1/me/predictions \
 | 홈 | `GET /v1/home/deadlines` |
 | 기록 | `GET·POST /v1/me/records`, `PATCH·DELETE /v1/me/records/{id}` |
 | 예측 | `POST /v1/me/predictions`, `POST /v1/me/predictions/preview` |
+| 알림 목록 | `GET /v1/me/notifications`, `GET /v1/me/notifications/unread-count`, `POST /v1/me/notifications/read` |
+| 관리자 (`/api/admin/v1`) | 인증 `POST /auth/login`·`/auth/mfa`·`/auth/logout`, `GET /auth/me` / 계정 `GET·POST /admins`, `PATCH /admins/{id}` / 대회 `GET·POST /races`, `GET·PUT·DELETE /races/{id}`, `POST /races/{id}/publish·unpublish·hide·clone`, `GET /races/duplicates`, `GET /races/{id}/impact` / 제보 `GET /reports`, `GET /reports/{id}`, `POST /reports/resolve` |
 
 - 공통: 약관 재동의 게이트(403 `TERMS_REQUIRED`), `X-App-Version`·`X-Platform`이 있으면 최소 버전 검사(426).
 - 소셜 로그인은 provider 키(`.env.example`의 `KAKAO_APP_ID` 등)가 있어야 동작한다. 키 없이 화면 흐름을 확인하려면 위 `dev:token`을 쓴다. 통합 테스트는 가짜 verifier를 쓴다.
@@ -86,6 +88,12 @@ pnpm --filter @berun/server worker                 # BullMQ 워커: 1분마다 �
 
 - `.env`의 `PUSH_DRY_RUN=true`(운영이 아니면 기본값)이면 Expo로 보내지 않고 로그만 남긴다. 실제 발송은 운영 환경에서만 끈다.
 - 관리자 대회 저장 후에는 `enqueueRaceUpdated(queue, { raceId, notify? })`로 예약표 재계산·N-06을 넣는다 (`server/src/worker/queue.ts`).
+
+### 관리자 API 로컬 확인 (T-020)
+
+- `.env`에 `TOKEN_ENC_KEY`(`openssl rand -base64 32`)가 있으면 `pnpm db:seed`가 **개발용 owner** `dev-owner@example.com` / `dev-owner-password-local-only`를 만든다 (로컬 전용 값, 운영 첫 owner는 배포 시 별도 시드).
+- 2단계 인증 코드: `pnpm --filter @berun/server dev:admin-totp`
+- 순서: `POST /api/admin/v1/auth/login` → `{ mfaToken }` → `POST /auth/mfa { mfaToken, totp }` → 세션 쿠키 + `csrfToken`. 쓰기 요청에는 `X-CSRF-Token`, 대회 수정에는 `If-Match: {updatedAt}`.
 
 ## 스크립트 (루트)
 
