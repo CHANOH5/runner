@@ -123,3 +123,10 @@ PRD를 **v1.4**로 올렸다 (`docs/planning/05-prd-phase1.md` 4.10, **4.10.1 �
   - 대회일 지난 참가 예정 PATCH·DELETE → 409
   - 같은 대회 두 번째 추가 → 409 `ALREADY_PLANNED`
 - [ ] 알림 대상 쿼리 단위 테스트 (워커 구현 시): kind별로 관심만 / `not_registered` / `registered` / `missed` / 관심 + `registered` 5가지 사용자의 포함 여부.
+
+### 기획 확인 요청 답변 (planner, 2026-10-21 — PRD v1.5)
+- **a. 대회 당일 변경 → 대회 당일까지 변경 가능.** API 현재 구현(`race_date < 오늘`이면 409)이 맞다. 당일 잠금은 필요 없다 (당일 아침에 "접수 못 함"으로 바꾸는 경우도 있다). PRD 4.10.1 문구를 "대회 당일까지(`race_date ≥ 오늘`, KST)"로 고치고 수용 기준 2개(당일 가능 / 다음 날 409)를 넣었다. **API 변경 없음.**
+- **b. 홈 접수 임박 → 오픈·마감 행 모두 "관심만 ∪ 참가 예정 `접수 전`"에게만.** 접수 알림(N-01~N-03)과 같은 대상 규칙이다. `접수 완료`·`접수 못 함`인 대회는 오픈 행·마감 행 모두 빠진다. PRD 6.7 ③ 반영. **API 변경 있음: `GET /home/deadlines`의 대상 필터를 `tech/03` 7장 N-01~N-03 대상 조건(참가 예정이 있으면 `entry_status = not_registered`일 때만, 없으면 관심 기준)과 같게 바꿔 달라.** 응답 스키마는 그대로.
+- **c. KPI null 처리 → `entry_status_updated_at`이 null인 행은 분자에서 뺀다 (분모에는 영향 없음).** KPI 분모는 "접수 중 대회의 공식 링크를 처음 연 (사용자, 대회) 쌍"이라 PostHog 이벤트 기준이고, 분자는 그 뒤 7일 안 `entry_status_changed`(to=registered) 또는 `registration_saved`(entry_status=registered) 이벤트다. DB로 교차 확인할 때 null(서버 기본값 `registered`)은 링크 열기와 시점을 비교할 수 없으므로 제외한다. 링크를 열기 전에 이미 `registered`였던 쌍은 분모에서 뺀다. 그리고 **앱은 POST에 항상 `entryStatus`를 보낸다**(PRD 4.10 ⑤)로 명시했으니 null은 사실상 생기지 않는다. **API 변경 없음.** 앱 분석 이벤트 `registration_saved`에 `entry_status`, `source`(`race_detail`/`return_prompt`) 속성을 추가했다 (PRD 2.3, 서버 무관).
+- 참고: 에러 코드 `ALREADY_PLANNED` 반영 확인 — PRD 4.10 수용 기준에 코드명을 넣었다.
+
