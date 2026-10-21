@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BeRun Phase 1 와이어프레임</title>
+<link rel="stylesheet" href="wireframe.css">
+</head>
+<body>
+<div class="doc">
+<div class="doc-head"><h1>BeRun Phase 1 와이어프레임</h1><span class="id">T-010</span></div>
+<p class="doc-meta">저충실도 · 순수 HTML/CSS · 모바일 390×844, 관리자 1280 · 기준: <code>../05-prd-phase1.md</code> v1.3, <code>../../tech/06-api.md</code> v1.1</p>
+
+<div class="panel" style="max-width:1280px">
+<h2>보는 법</h2>
+<ul>
+<li>화면마다 상태(기본 · 로딩 · 빈 · 에러 등)를 나란히 그렸다. PRD에 정의된 상태만 그렸다.</li>
+<li>프레임 안의 버튼·카드는 해당 화면으로 가는 링크다. 하단 탭은 홈/대회/기록/마이 4개 (D-012).</li>
+<li>회색 점선 박스 = 이미지·지도 등 자리. 진한 버튼 = 주 동작, 점선 버튼 = 비활성.</li>
+<li>문구는 PRD 문구를 그대로 썼다. <code>{}</code>는 변수, <code>[미정]</code>은 PRD 11장 미정 항목.</li>
+<li>하위 화면(전체 화면 지도, 공지 상세, 재동의, 가입 중단 등)은 부모 화면 페이지 안의 상태로 그렸다. 화면 수 24개에 포함하지 않는다.</li>
+</ul>
+</div>
+
+<h2>흐름 A — 첫 사용 → 대회 관심 등록</h2>
+<div class="flow"><a href="S-001-splash.html">S-001 스플래시</a><span class="arrow">→</span><a href="S-002-login.html">S-002 로그인</a><span class="arrow">→</span><a href="S-003-terms.html">S-003 약관 동의</a><span class="arrow">→</span><a href="S-004-profile.html">S-004 프로필 설정</a><span class="arrow">→</span><a href="S-005-records-onboarding.html">S-005 최근 기록 입력</a><span class="cond">(건너뛰기 가능)</span><span class="arrow">→</span><a href="S-006-notification-permission.html">S-006 알림 권한 안내</a><span class="arrow">→</span><a href="S-010-home.html">S-010 홈</a><span class="arrow">→</span><a href="S-020-races.html">S-020 대회 캘린더/리스트</a><span class="arrow">→</span><a href="S-022-race-detail.html">S-022 대회 상세</a><span class="cond">[관심 등록]</span></div>
+<h2>흐름 B — 참가 등록 + 목표 설정</h2>
+<div class="flow"><a href="S-022-race-detail.html">S-022 대회 상세</a><span class="arrow">→</span><a href="S-023-registration.html">S-023 참가 등록</a><span class="cond">종목 선택 · 목표 기록</span><span class="arrow">→</span><span class="cond">(기록 없음)</span><a href="S-031-record-edit.html">S-031 기록 추가/수정</a><span class="arrow">→</span><a href="S-023-registration.html">S-023 참가 등록</a><span class="arrow">→</span><span class="cond">(목표 있음)</span><a href="S-033-prediction-result.html">S-033 예측 결과 · 페이스 전략</a><span class="cond">페이스 전략</span><span class="arrow">→</span><span class="cond">공식 접수 안내 시트</span><span class="arrow">→</span><a href="S-061-my-races.html">S-061 내 대회</a></div>
+<p class="muted">보조: 기록 탭에서 예측</p>
+<div class="flow"><a href="S-030-records-home.html">S-030 기록 홈</a><span class="arrow">→</span><a href="S-032-predict.html">S-032 기록 예측</a><span class="arrow">→</span><a href="S-033-prediction-result.html">S-033 예측 결과 · 페이스 전략</a><span class="arrow">→</span><span class="cond">[이 거리 대회 찾기]</span><a href="S-020-races.html">S-020 대회 캘린더/리스트</a></div>
+
+<h2>온보딩 · 계정</h2><div class="idx-grid"><a class="idx-item" href="S-001-splash.html"><b>S-001</b>스플래시<span class="muted">—</span></a><a class="idx-item" href="S-002-login.html"><b>S-002</b>로그인<span class="muted">F-001</span></a><a class="idx-item" href="S-003-terms.html"><b>S-003</b>약관 동의<span class="muted">F-002</span></a><a class="idx-item" href="S-004-profile.html"><b>S-004</b>프로필 설정<span class="muted">F-003</span></a><a class="idx-item" href="S-005-records-onboarding.html"><b>S-005</b>최근 기록 입력<span class="muted">F-004</span></a><a class="idx-item" href="S-006-notification-permission.html"><b>S-006</b>알림 권한 안내<span class="muted">F-014</span></a></div><h2>홈</h2><div class="idx-grid"><a class="idx-item" href="S-010-home.html"><b>S-010</b>홈<span class="muted">F-010, F-014</span></a><a class="idx-item" href="S-011-notifications.html"><b>S-011</b>알림 목록<span class="muted">F-014</span></a></div><h2>대회</h2><div class="idx-grid"><a class="idx-item" href="S-020-races.html"><b>S-020</b>대회 캘린더/리스트<span class="muted">F-010</span></a><a class="idx-item" href="S-021-search-filter.html"><b>S-021</b>대회 검색·필터<span class="muted">F-011</span></a><a class="idx-item" href="S-022-race-detail.html"><b>S-022</b>대회 상세<span class="muted">F-012, F-013</span></a><a class="idx-item" href="S-023-registration.html"><b>S-023</b>참가 등록<span class="muted">F-015, F-020</span></a><a class="idx-item" href="S-024-race-report.html"><b>S-024</b>대회 정보 오류 제보<span class="muted">F-016</span></a></div><h2>기록</h2><div class="idx-grid"><a class="idx-item" href="S-030-records-home.html"><b>S-030</b>기록 홈<span class="muted">F-004, F-020</span></a><a class="idx-item" href="S-031-record-edit.html"><b>S-031</b>기록 추가/수정<span class="muted">F-004</span></a><a class="idx-item" href="S-032-predict.html"><b>S-032</b>기록 예측<span class="muted">F-020</span></a><a class="idx-item" href="S-033-prediction-result.html"><b>S-033</b>예측 결과 · 페이스 전략<span class="muted">F-020, F-021</span></a></div><h2>마이</h2><div class="idx-grid"><a class="idx-item" href="S-060-my.html"><b>S-060</b>마이<span class="muted">—</span></a><a class="idx-item" href="S-061-my-races.html"><b>S-061</b>내 대회<span class="muted">F-013, F-015</span></a><a class="idx-item" href="S-062-profile-edit.html"><b>S-062</b>프로필 수정<span class="muted">F-003</span></a><a class="idx-item" href="S-063-settings.html"><b>S-063</b>설정<span class="muted">—</span></a><a class="idx-item" href="S-064-notification-settings.html"><b>S-064</b>알림 설정<span class="muted">F-071</span></a><a class="idx-item" href="S-065-privacy-terms.html"><b>S-065</b>개인정보 · 약관<span class="muted">F-002</span></a><a class="idx-item" href="S-066-delete-account.html"><b>S-066</b>회원 탈퇴<span class="muted">F-072</span></a></div><h2>관리자 웹 (Phase 1)</h2><div class="idx-grid"><a class="idx-item" href="A-001-admin-login.html"><b>A-001</b>관리자 로그인<span class="muted">F-080</span></a><a class="idx-item" href="A-002-admin-dashboard.html"><b>A-002</b>관리자 대시보드<span class="muted">F-080</span></a><a class="idx-item" href="A-003-admin-races.html"><b>A-003</b>대회 목록 · 등록 · 수정<span class="muted">F-080, F-010, F-012</span></a><a class="idx-item" href="A-004-admin-reports.html"><b>A-004</b>오류 제보 처리<span class="muted">F-080, F-016</span></a><a class="idx-item" href="A-008-admin-notices.html"><b>A-008</b>공지 · 푸시 발송<span class="muted">F-080, F-014</span></a></div>
+
+<div class="panel" style="max-width:1280px;margin-top:24px">
+<h2>Phase 1에 없는 것 (PRD 9장)</h2>
+<ul>
+<li>라이브 탭·위치 공유·위치 권한 요청, 코스 경로 지도, 지도에서 대회 찾기</li>
+<li>대회 공유, Android Apple 로그인 (D-016), 비로그인 둘러보기</li>
+<li>참가 인증·참가자 수·페이스 그룹·친구 (Phase 2), 결과 입력 (Phase 4)</li>
+</ul>
+</div>
+</div>
+</body>
+</html>

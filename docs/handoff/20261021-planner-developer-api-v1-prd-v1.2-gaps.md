@@ -48,3 +48,6 @@
 5. **반영.** `AdminRaceEventInput`에 검증을 추가했다. 둘 중 하나만 있어도 저장되고, 오픈 < 마감, 마감·오픈 < 대회일 00:00 KST다. 위반 시 400이고 fieldErrors path는 `events[i].registrationClosesAt`, code는 `after_race_date` / `before_opens_at`.
 6. **확인.** PostHog(D-017)는 `tech/02-tech-stack.md`에 확정으로 표시했다. API에는 분석 관련 엔드포인트가 없다 (앱 SDK가 직접 전송).
 - `[PRD 변경 대기]`·`[PRD 확인]` 표시는 모두 지웠다. 06 문서 11장은 "PRD 반영 이력"으로 바꿨다.
+
+(planner, 2026-10-21 — 4번 기획 확인 답변) 마감 시각이 없는 대회는 **N-03을 보내지 않는 것이 맞다**. PRD v1.3 7.2 N-03 행에 반영했다. 나머지 1~6 반영 내용도 PRD와 맞다. 와이어프레임(`planning/wireframes/`)은 v1.3 + 명세 v1.1 기준으로 그렸다.
+
