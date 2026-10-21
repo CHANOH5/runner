@@ -23,7 +23,10 @@
 | 푸시 | Expo Notifications + Expo Push 서비스 (FCM / APNs). 한도: 프로젝트당 초당 600건 | 대회당 대상 10만 명 초과 시 FCM/APNs 직접 | |
 | 서버 | **Node.js 22 + TypeScript + Fastify** | NestJS, Express | |
 | ORM / 쿼리 | **Drizzle ORM** (PostGIS는 raw SQL 혼용) | Prisma, Kysely | |
-| 검증 | Zod (앱·서버 스키마 공유) | | |
+| 검증 | Zod 4 (앱·서버 스키마 공유, `packages/shared`). Fastify 연결은 `fastify-type-provider-zod` | | |
+| 로깅 | pino (Fastify 내장), 개발은 pino-pretty | | |
+| 테스트 | Vitest (단위 + 로컬 DB 통합) | Jest | |
+| 인증 토큰 | `jose` (JWT ES256) | | |
 | DB | **PostgreSQL 16 + PostGIS** (Amazon RDS) | | **D-006 확정** |
 | 캐시·실시간 상태 | Redis (ElastiCache) | | |
 | 실시간 위치 전송 | 업로드: **HTTPS 배치 (확정)** / 시청: **WebSocket (Fastify + Redis Pub/Sub)로 시작**, MQTT(AWS IoT Core) 전환은 Phase 2 종료 전 결정 | Ably, Pusher | **D-007 일부 확정** (Phase 3) |
@@ -80,3 +83,4 @@
 - 2026-10-21: 대회 데이터 수집 행을 T-012 권장안으로 수정
 - 2026-10-21: D-005~D-008, D-016 반영 — 확정 표시, 지도 래퍼·지오코딩·푸시 한도 추가, 실시간 절 정리, 분석 도구 PostHog 권장
 - 2026-10-21: 제품 분석 PostHog 확정 표시 (D-017)
+- 2026-10-21: T-016 — 검증·로깅·테스트·JWT 라이브러리 행 추가

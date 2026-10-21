@@ -1,0 +1,36 @@
+# 로컬 개발용 DB·캐시. 운영은 Amazon RDS(PostgreSQL 16 + PostGIS)와 ElastiCache(Redis) (D-006).
+# 로컬에 이미 떠 있는 Postgres·Redis와 겹치지 않도록 호스트 포트를 55432 / 56379로 둔다.
+name: berun
+
+services:
+  postgres:
+    # postgis/postgis 공식 이미지는 arm64(Apple Silicon) 빌드가 없어, 같은 관리자의 멀티 아키텍처 빌드를 쓴다.
+    image: imresamu/postgis:16-3.5
+    environment:
+      POSTGRES_USER: berun
+      POSTGRES_PASSWORD: berun
+      POSTGRES_DB: berun
+      TZ: UTC
+    ports:
+      - '55432:5432'
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U berun -d berun']
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - '56379:6379'
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+volumes:
+  postgres-data:

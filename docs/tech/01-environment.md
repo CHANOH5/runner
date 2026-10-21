@@ -64,10 +64,12 @@
 | 저장소 | 단일 모노레포 (`app/`, `server/`, `docs/`) |
 | 패키지 매니저 | pnpm workspace |
 | Node | 22 LTS |
-| 로컬 DB | Docker Compose (PostgreSQL + PostGIS, Redis) |
+| 로컬 DB | Docker Compose (PostgreSQL 16 + PostGIS 3.5 `imresamu/postgis:16-3.5` — arm64 지원, Redis 7). 호스트 포트 55432 / 56379, 테스트 DB `berun_test` |
 | 브랜치 | `main` 보호, 기능은 `feat/*`, 세션별 워크트리 |
-| 코드 규칙 | TypeScript strict, ESLint, Prettier |
+| 코드 규칙 | TypeScript strict (`noUncheckedIndexedAccess`), ESLint (typescript-eslint type-checked), Prettier |
+| 테스트 | Vitest. 통합 테스트는 로컬 테스트 DB·Redis 사용 (README) |
 
 ---
 ## 변경 이력
 - 2026-10-21: v1 초안 작성
+- 2026-10-21: T-016 — 로컬 개발 환경 구체화 (Docker 이미지·포트·테스트 DB, 코드 규칙, 테스트)

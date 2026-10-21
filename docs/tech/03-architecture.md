@@ -108,6 +108,7 @@
 출력: { 예상 기록, 범위(min~max), 신뢰도, 평균 페이스, 구간 스플릿 }
 ```
 - 결과는 `predictions` 테이블에 입력값 스냅샷과 함께 저장한다. 결과 입력(Phase 4) 후 예측 오차를 분석해 모델을 개선한다.
+- 구현: `server/src/modules/predictions/` — `model.ts`(버전별 상수 묶음), `engine.ts`(DB와 무관한 순수 계산), `service.ts`(대상 확인·기록 조회·저장), `index.ts`(라우트). 직접 고른 기록도 신뢰도는 각 기록의 거리 비율·최신성으로 판정한다.
 - 상수·가중치는 `planning/05-prd-phase1.md` 5장 (D-010 `riegel-1.06-v1`). 상수 묶음은 `model_version`별 서버 설정으로 두고, 05 문서 5.7 예시 3개를 단위 테스트 기대값으로 고정한다 (예측일 2026-10-21).
 
 ## 6. 앱 지도 구조 (D-008)
@@ -177,6 +178,22 @@ Worker: social_unlink_jobs 처리 — 카카오 unlink(어드민 키 + 회원번
 - Google은 앱 로그인에서 ID 토큰만 받으므로 revoke하지 않는다 (사용자가 Google 계정 설정에서 해제 가능).
 - 탈퇴 사유는 `account_deletion_stats`에 user_id·시각 없이 날짜만 저장.
 
+## 9-0. 서버 코드 구조 (T-016)
+
+```
+server/src/
+├── app.ts            buildApp({ config, db, redis }) — 의존성 주입, 테스트도 같은 함수 사용
+├── server.ts         실행 진입점 (종료 시 연결 정리)
+├── config/env.ts     환경 변수 Zod 검증 (실패하면 시작하지 않음, 값은 출력하지 않음)
+├── db/               Drizzle 스키마, 마이그레이션, migrate·seed
+├── lib/              AppError, 검증 에러 → fieldErrors 변환, KST 날짜
+├── plugins/          에러 핸들러(tech/06 3장 형식), 인증(access token 검증 → request.auth)
+└── modules/          health, auth, users, races, registrations, records, predictions, notifications, admin
+                      (각 모듈 index.ts = Fastify 플러그인. 앱 API는 /v1, 관리자는 /api/admin/v1)
+```
+- 모든 응답에 `X-Request-Id`(UUID v7, 요청 헤더가 있으면 그대로). 로그에서 `authorization`·`cookie`·`x-device-id`는 가린다.
+- 남은 공통 미들웨어: 약관 재동의 게이트(403 `TERMS_REQUIRED`), 최소 앱 버전(426), 요청 제한(Redis), 멱등 키, 관리자 감사 로그.
+
 ## 9. 앱 원격 설정 · 강제 업데이트
 
 - `GET /app-config` (인증 불필요, CDN 캐시 5분): `min_native_version_{ios,android}` 등 `app_configs` 값.
@@ -187,3 +204,4 @@ Worker: social_unlink_jobs 처리 — 카카오 unlink(어드민 키 + 회원번
 ## 변경 이력
 - 2026-10-21: v1 초안 작성
 - 2026-10-21: D-005~D-008 반영 (v1.1) — 실시간 방식 메모, 지도 래퍼 구조(6장), 알림 파이프라인(7장), 가입·탈퇴 외부 연동(8장), 원격 설정·강제 업데이트(9장) 추가
+- 2026-10-21: T-016 — 서버 코드 구조(9-0), 예측 모듈 구현 위치 추가
