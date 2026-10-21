@@ -6,6 +6,7 @@ import { uuidv7 } from 'uuidv7';
 import { buildApp, type App } from '../src/app.js';
 import type { Config } from '../src/config/env.js';
 import { createDb, type Db } from '../src/db/client.js';
+import type { RaceUpdateSink } from '../src/modules/admin/races-service.js';
 import { signAccessToken } from '../src/modules/auth/tokens.js';
 import {
   socialTokenInvalid,
@@ -50,7 +51,7 @@ export function fakeVerifiers(): SocialVerifiers {
 }
 
 export async function createTestContext(
-  overrides: { redisUrl?: string } = {},
+  overrides: { redisUrl?: string; raceUpdates?: RaceUpdateSink } = {},
 ): Promise<TestContext> {
   const { publicKey, privateKey } = await generateKeyPair('ES256', { extractable: true });
   const config: Config = {
@@ -81,6 +82,7 @@ export async function createTestContext(
     logger: false,
     verifiers: fakeVerifiers(),
     configCacheMs: 0,
+    ...(overrides.raceUpdates && { raceUpdates: overrides.raceUpdates }),
   });
   await app.ready();
 
