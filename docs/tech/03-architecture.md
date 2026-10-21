@@ -167,6 +167,22 @@ app/src/components/map/
 
 - 정시성 KPI(N-02 99%)의 측정 기준은 **서버가 Expo Push에 넘긴 시각**. 대회 하나에 대상 약 10만 명까지 10분 창 안에 처리 가능 [추정 — 부하 테스트로 확인]. 넘으면 FCM/APNs 직접 발송으로 전환.
 - 발송 워커는 2개 이상, BullMQ 반복 작업 + 분산 락. 서버 시계는 NTP 동기화.
+
+**구현 (T-019, `server/src/modules/notifications/`, `server/src/worker/`)**
+
+| 단계 | 구현 |
+|---|---|
+| 예약표 | `schedule.ts` `computeSchedules`(순수 함수) + `recalculateSchedules`. N-01 오픈 전날 19:00 / N-02 오픈 −10분(시각 미정이면 오픈일 09:00) / N-03 마감 전날 19:00 — 대회 단위 행 + **종목 마감이 따로 있는 종목마다 종목 행** / N-04 D-7 12:00 / N-05 전날 19:00. 지난 시각·취소·종료·미게시 대회는 만들지 않는다. 재계산: 시각이 같으면 그대로(보낸 것 재발송 없음), 바뀌면 확정된 미발송 알림 취소 후 새 시각으로 `pending`, 필요 없어진 행은 `cancelled` |
+| 대상 | `audience.ts` 한 쿼리를 대상 확정과 발송 직전 재확인이 같이 쓴다. 공통 `users.status = 'active'`(휴면·정지 제외, P-RET-03), 해당 알림 설정 ON(행이 없으면 기본 ON). N-03 대회 단위 행 = 관심만 + 종목 마감이 따로 없는 접수 전 참가 예정자, 종목 행 = 그 종목의 접수 전. N-06 = 관심 ∪ 참가 예정(설정 무관) |
+| 대상 확정 | `materializeDue`: `scheduled_at − 30분 ≤ 지금`인 `pending` 행을 `FOR UPDATE SKIP LOCKED`로 집어 `notifications` 생성(유니크로 중복 방지), 행은 `materialized` |
+| 발송 | `sendDue`: 예약 시각이 된 알림을 임대(`next_attempt_at` = +5분)로 집는다 → 발송 직전 확인 → 그 시점 값으로 문구 렌더링(`render.ts`) → 그룹(`push_group_key` = 사용자·kind·예약 시각) 2건 이상이면 묶음 푸시(`berun://notifications`) → Expo 100건 배치 + 토큰 버킷 |
+| 발송 직전 시각 조건 | 문구가 사실과 달라지면 보내지 않는다: N-01은 오픈 전날까지·오픈 전, N-03은 마감 전날까지·마감 전, N-02는 오픈 전(시각 미정이면 오픈일까지), N-04는 예약 시각부터 24시간 안, N-05는 대회 전날까지. 워커가 멈췄다 늦게 돈 경우도 같은 규칙 |
+| 결과 | 성공 → `sent`, `sent_at` = Expo에 넘긴 시각(D-018). 기기 토큰 없음 → `sent`(앱 내만, `sent_at` null, `last_error = no_device`). `DeviceNotRegistered` → 토큰 삭제, 모든 기기가 무효면 `failed`. 그 밖의 실패 → 1분 뒤 재시도, 3회 재시도 후에도 실패면 `failed`(앱 내 알림은 남음). 처리가 끝난 예약 행은 `done` |
+| N-06 | `handleRaceUpdated(raceId, { notify, changeSummary })` = 재계산 + 즉시 알림 생성. 관리자 API는 BullMQ `race-updated` 작업으로 넣는다(`enqueueRaceUpdated`) |
+| 야간 | `canSendAt`: 마케팅만 08:00~20:59, 서비스 알림은 야간에도 (P-NOTI-05). 마케팅 발송(N-08)은 공지 작업에서 |
+| 워커 | BullMQ 큐 `notifications`(prefix `berun`), 1분 `tick` = 대상 확정 + 발송. `pnpm --filter @berun/server worker`. `PUSH_DRY_RUN`(운영 외 기본 true)이면 Expo로 보내지 않는다. 여러 워커는 행 잠금·임대로 한 번만 처리(임대 만료 뒤 재처리 = 최소 1회 전달) |
+
+- 남은 것: Expo receipt 확인(15분 뒤), 알림 90일 파기 배치, N-07 제보 결과, N-08 공지·마케팅, 알림 목록 API(`GET /me/notifications` — `payload.title/body/deepLink`를 그대로 쓰면 된다).
 - 공지·마케팅(N-08, `notices`): owner 승인 → 예약 시각에 대상(전체 / 마케팅 동의자) 조회 후 같은 발송 경로. 마케팅은 08:00~20:59만 (DB CHECK + 발송 시 재확인).
 
 ## 8. 가입 · 탈퇴의 외부 연동 (F-001, F-072)
@@ -231,3 +247,4 @@ server/src/
 - 2026-10-21: D-019 반영 — 알림 kind별 대상 규칙(접수 상태 기준) 표와 대상 확정·발송 직전 재판정, 설명 문장 "참가 등록" → "참가 예정"
 - 2026-10-21: 홈 접수 임박이 N-01~N-03 대상 조건을 공유함을 명시 (PRD v1.5)
 - 2026-10-21: T-018 — 가입 외부 연동 구현 메모(8장: verifier, 연결 해제 작업 예약 방식, 암호화, 기기), 공통 미들웨어 구현 상태(9-0)
+- 2026-10-21: T-019 — 알림 파이프라인 구현 메모(7장): 예약표·대상·발송·시각 조건·재시도·묶음·N-06·워커

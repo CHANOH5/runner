@@ -152,6 +152,27 @@ describe('PATCH·DELETE /v1/me/records/{id}', () => {
     });
   });
 
+  it('수정 중복 확인: 다른 기록과 같아지면 409, confirmDuplicate면 저장, 제목·구분만 바꾸면 확인 안 함', async () => {
+    const a = RunRecord.parse((await post(tenK())).json());
+    const b = RunRecord.parse((await post(tenK({ durationSec: 3100 }))).json());
+    const url = `/v1/me/records/${b.id}`;
+
+    let res = await call(ctx, userId, 'PATCH', url, { durationSec: 3000 });
+    expect([res.statusCode, errorOf(res)]).toEqual([
+      409,
+      expect.objectContaining({ code: 'DUPLICATE_RECORD', details: { existingRecordId: a.id } }),
+    ]);
+    res = await call(ctx, userId, 'PATCH', url, { durationSec: 3000, confirmDuplicate: true });
+    expect(res.statusCode).toBe(200);
+
+    // 이제 a와 b가 같다: 제목·구분만 바꾸면 확인하지 않음, 자기 값으로 다시 보내도 자기 자신은 제외
+    res = await call(ctx, userId, 'PATCH', url, { title: '새 제목', kind: 'training' });
+    expect(res.statusCode).toBe(200);
+    const c = RunRecord.parse((await post(tenK({ durationSec: 3200 }))).json());
+    res = await call(ctx, userId, 'PATCH', `/v1/me/records/${c.id}`, { durationSec: 3300 });
+    expect(res.statusCode).toBe(200);
+  });
+
   it('삭제 204, 남의 기록 수정·삭제는 404', async () => {
     const rec = RunRecord.parse((await post(tenK())).json());
     const other = await createUser(ctx);

@@ -103,6 +103,8 @@ export const RecordPatch = z
     runDate: recordFields.runDate.optional(),
     kind: recordFields.kind.optional(),
     title: recordFields.title.optional(),
+    /** 날짜·거리·기록을 바꿔 다른 기록과 같아질 때 409를 무시하고 저장 (PRD v1.6 4.4) */
+    confirmDuplicate: z.boolean().default(false),
   })
   .superRefine((v, ctx) => {
     if ((v.category === undefined) !== (v.distanceM === undefined)) {

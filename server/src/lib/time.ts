@@ -24,3 +24,14 @@ export function daysBetween(a: string, b: string): number {
 export function addDays(date: string, days: number): string {
   return new Date(Date.parse(`${date}T00:00:00Z`) + days * DAY_MS).toISOString().slice(0, 10);
 }
+
+/** KST 날짜 + 시각 → Date. 예: kstAt('2026-10-31', '19:00') */
+export function kstAt(date: string, time: string): Date {
+  return new Date(`${date}T${time}:00+09:00`);
+}
+
+/** KST 시·분 (0~23, 0~59) */
+export function kstHourMinute(at: Date): { hour: number; minute: number } {
+  const local = new Date(at.getTime() + KST_OFFSET_MS);
+  return { hour: local.getUTCHours(), minute: local.getUTCMinutes() };
+}

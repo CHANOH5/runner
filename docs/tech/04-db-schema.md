@@ -519,7 +519,10 @@ CREATE TABLE notifications (
   scheduled_at    timestamptz NOT NULL,
   status          text NOT NULL DEFAULT 'scheduled', -- scheduled | sent | cancelled | failed
   push_group_key  text,                          -- 묶음 발송 키 (user_id + kind + scheduled_at)
-  sent_at         timestamptz,
+  sent_at         timestamptz,                   -- 서버가 Expo에 넘긴 시각 (D-018). 앱 내만(기기 없음)이면 null
+  attempt_count   smallint NOT NULL DEFAULT 0,   -- 푸시 실패 횟수 (1분 간격 최대 3회 재시도)
+  next_attempt_at timestamptz,                   -- 다음 시도 시각 / 워커 임대 만료 시각
+  last_error      text,                          -- 마지막 실패 사유, 앱 내만이면 no_device (A-002 집계)
   read_at         timestamptz,
   created_at      timestamptz NOT NULL DEFAULT now()
 );
@@ -648,3 +651,4 @@ CREATE TABLE deletion_jobs (                     -- 파기 배치 실행 기록 
 - 2026-10-21: T-016 구현 반영 — `race_courses`·`registration_verifications`를 Phase 2로 표시(PRD 9장과 정합), 구현 위치·마이그레이션 순서 메모, `predictions (user_id, created_at DESC)` 인덱스 추가, `input_snapshot` 내용 명시
 - 2026-10-21: D-019 반영 (handoff `20261021-planner-developer-entry-status.md`) — `race_registrations`에 `entry_status`(CHECK, 기본 `not_registered`)·`entry_status_updated_at`·`entry_status_source`(CHECK) 추가, `(race_id, entry_status)` 인덱스. 설명 문장의 "참가 등록" → "참가 예정". 테이블 이름은 유지 (이름 규칙 메모 추가)
 - 2026-10-21: T-018 구현 — 마이그레이션 `0003_entry_status.sql`로 `entry_status`·`entry_status_updated_at`·`entry_status_source`·`(race_id, entry_status)` 인덱스 적용. API 응답 `Registration.goalSource`를 저장할 곳이 없어 **`goal_source` 컬럼 추가** (CHECK: 값 3개 + `none` ⇔ 목표 없음). 기존 행은 목표가 있으면 `manual`로 채움
+- 2026-10-21: T-019 — `notifications`에 `attempt_count`·`next_attempt_at`·`last_error` 추가 (마이그레이션 `0004_notification_delivery.sql`). `payload`에 렌더링한 `title`·`body`·`deepLink`, `scheduleId`, `raceEventId`, `registrationId`, 푸시 티켓 요약을 둔다

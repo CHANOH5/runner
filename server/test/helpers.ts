@@ -64,6 +64,7 @@ export async function createTestContext(
     jwtPrivateKey: await exportPKCS8(privateKey),
     tokenEncKey: randomBytes(32).toString('base64'),
     social: { kakao: null, google: null, apple: null },
+    push: { dryRun: true, expoAccessToken: undefined, ratePerSec: 600 },
   };
   const { db, client } = createDb(config.databaseUrl, { max: 4 });
   const redis = new Redis(config.redisUrl, {

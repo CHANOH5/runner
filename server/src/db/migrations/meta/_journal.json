@@ -29,6 +29,13 @@
       "when": 1792566084918,
       "tag": "0003_entry_status",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1792567931897,
+      "tag": "0004_notification_delivery",
+      "breakpoints": true
     }
   ]
 }

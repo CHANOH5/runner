@@ -40,6 +40,8 @@ export const SocialLoginRes = z.discriminatedUnion('result', [
     tokens: TokenPair,
     /** 재동의가 필요한 필수 약관 kind */
     pendingTerms: z.array(z.string()),
+    /** 이번 로그인으로 휴면(dormant)이 해제됐으면 true → 앱은 휴면 해제 안내 화면 1회 (PRD v1.6 4.1) */
+    reactivated: z.boolean(),
   }),
   z.object({
     result: z.literal('signup_required'),
