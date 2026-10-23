@@ -93,6 +93,8 @@ export const notifications = pgTable(
       .on(t.scheduledAt)
       .where(sql`${t.status} = 'scheduled'`),
     index('notifications_user_created_idx').on(t.userId, t.createdAt.desc()),
+    // 알림 목록 (scheduled_at DESC, id) — tech/06 4장 (T-020)
+    index('notifications_user_scheduled_idx').on(t.userId, t.scheduledAt.desc(), t.id.desc()),
   ],
 );
 

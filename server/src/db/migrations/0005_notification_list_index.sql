@@ -1,0 +1,1 @@
+CREATE INDEX "notifications_user_scheduled_idx" ON "notifications" USING btree ("user_id","scheduled_at" DESC NULLS LAST,"id" DESC NULLS LAST);

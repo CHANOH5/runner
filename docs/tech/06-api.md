@@ -109,6 +109,7 @@ const ApiError = z.object({
 | 409 | `DUPLICATE_RECORD` | 같은 날짜·거리·기록 (확인 없이) | "같은 기록이 이미 있어요…" → `confirmDuplicate: true`로 재요청 (4.4) |
 | 409 | `NICKNAME_TAKEN` | 닉네임 선점 | "이미 사용 중이에요" (4.3) |
 | 409 | `CONFLICT_STALE` | 관리자 동시 수정 (`If-Match` 불일치) | "다른 곳에서 수정됐어요. 새로고침" |
+| 409 | `RACE_IN_USE` | (T-020) 관심·참가 예정이 있는 대회의 게시 취소·삭제 (`details.interestCount`, `registrationCount`) | 관리자 웹: "취소 상태로 바꿔주세요" (PRD 8.4) |
 | 422 | `NICKNAME_FORBIDDEN` | 금칙어·예약어 | "사용할 수 없는 닉네임이에요" |
 | 422 | `NICKNAME_CHANGE_COOLDOWN` | 7일 이내 재변경 (`details.availableAt`) | "{M월 D일}부터 바꿀 수 있어요" |
 | 422 | `UNDERAGE` | 만 14세 미만 | 가입 중단 화면 (서버는 가입 세션 폐기 + 소셜 연결 해제) |
@@ -752,6 +753,8 @@ const PredictionReq = z.object({
 ```ts
 // GET /me/notifications → Page(AppNotification). status = sent 또는 failed (푸시가 실패해도 앱 내 알림은 남는다, PRD 7.1). scheduled·cancelled 제외
 // (T-019) title·body·deepLink는 워커가 발송 시점에 렌더링해 notifications.payload에 저장한 값. 푸시 data = { notificationIds, deepLink }
+// (T-020 구현) 정렬·커서·createdAt은 created_at이 아니라 **scheduled_at**(예약 발송 시각, 즉시 알림은 생성 시각) — 예약 알림은 발송 30분 전에 행이 생겨
+//   created_at으로 정렬하면 "3시간 전" 표시가 받은 시각과 30분 어긋난다. 보이는 기간(90일)은 created_at 기준. 문구가 아직 없는(발송 전) 행은 내보내지 않는다
 // POST /me/notifications/read
 z.union([ z.object({ ids: z.array(Id).min(1).max(100) }), z.object({ all: z.literal(true) }) ])  → 204
 // GET /notices/{id}
@@ -776,6 +779,18 @@ z.object({
 
 > 권한: `O` owner, `P` operator, `V` viewer (PRD 8.1). 표에 없는 역할은 403.
 > 동시 수정 방지: 대회 수정은 `If-Match: {updatedAt}` 헤더 필수 → 다르면 409 `CONFLICT_STALE`.
+
+> **구현 (T-020)**: 7.1 인증·계정, 7.3 대회(지오코딩 제외), 7.5 제보. 7.2 대시보드·7.4 수집 후보·7.6 공지·7.7 원격 설정은 다음 작업.
+> - 세션: Redis `admin:sess:{hash}`, 쿠키 `berun_admin_session`(path `/api/admin`, httpOnly, SameSite=Strict, 운영은 Secure). 2단계 토큰 5분·5회. 잠금 중 로그인 → **429 `RATE_LIMITED`** (`details.lockedUntil`). 비활성 관리자는 다음 요청부터 401.
+> - CSRF 실패·역할 부족 → 403 `FORBIDDEN`. 감사 로그 `action`은 `{METHOD} {경로 패턴}` (로그인은 `login`, 로그아웃 `logout`), 응답 전에 기록.
+> - `POST /admins`: `{ email, role, password(12자 이상) }` → `{ admin, totpUri }` (TOTP 등록 URI는 이 응답에만). `PATCH /admins/{id}`: `{ role?, disabled? }` — 자기 비활성화·마지막 owner 강등은 400.
+> - `If-Match`: 없으면 400(`if-match` required), 초 단위 비교. 관리자 입력 시각은 초 단위로 저장.
+> - 슬러그 자동: 대회명의 영문·숫자 부분(없으면 `race`) + 대회 연도 + 짧은 랜덤 (한글은 로마자로 바꾸지 않음).
+> - `PUT`: 종목 표의 빠진 행은 삭제 — 참가 예정이 있는 종목이면 400(`events`, `event_in_use`). 게시된 대회를 도로 외 종류로 바꾸면 400(`raceType`, `publish_requires_road`).
+> - 공식 URL을 처음 넣으면 대표 출처(확인 일시 = 지금)를 만든다. 이후 확인 일시는 `markVerifiedNow`일 때만 갱신.
+> - N-06c 요약(`changeSummary`): 대회일·출발 시각·접수 오픈·접수 마감 중 바뀐 것 최대 2개 (예: "대회일: 3월 22일"). 상태 연기·취소가 일정 변경보다 우선.
+> - `GET /races` 관리자 목록 응답: `{ items, total, page, pageSize }`, 항목에 `publishMissing`·`hasCoords`.
+> - 제보 처리 N-07은 앱 내 알림만(푸시 없음, `status = sent`, `sent_at` null). 탈퇴·휴면·정지 제보자에게는 남기지 않는다.
 
 ### 7.1 인증 · 계정 (A-001)
 | 메서드·경로 | 권한 | 설명 |
@@ -1055,3 +1070,4 @@ v1.1에서 PRD v1.2 대조 요청(handoff `20261021-planner-developer-api-v1-prd
 - 2026-10-21: T-018 구현 반영 — 대회 목록·상세 캐시 `no-store`(사용자별 `my` 포함), 목록 쿼리 불리언·메모리 필터 메모, 가입 201·중단 멱등, 참가 예정 서버 기본값일 때 접수 상태 시각·경로 null, `predictionId`·추가 전용 필드 의미, fieldErrors 코드 추가. 요청 스키마의 `.and(GoalInput)`은 같은 계약을 평평한 객체 + 검사로 구현 (`packages/shared/src/registrations.ts`). 구현 엔드포인트 목록은 README
 - 2026-10-21: T-019 — PRD v1.6 반영: `PATCH /me/records/{id}` `confirmDuplicate`·409 `DUPLICATE_RECORD`, `POST /auth/social` `logged_in.reactivated`
 - 2026-10-21: T-019 — 알림 목록 항목의 문구 출처(워커가 발송 시 렌더링해 payload에 저장) 메모
+- 2026-10-21: T-020 구현 반영 — 알림 목록 정렬·표시 시각 `scheduled_at`, 에러 `RACE_IN_USE`, 관리자 API 구현 메모(세션·잠금 429·CSRF·감사 로그·If-Match·슬러그·종목 삭제·대표 출처·N-06c 요약·N-07)

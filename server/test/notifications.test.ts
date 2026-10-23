@@ -274,7 +274,7 @@ describe('발송', () => {
       .set({ registrationOpensAt: kst('2026-10-31T09:00:00') })
       .where(eq(races.id, race.id));
     const res = await at('2026-10-31T19:00:00');
-    expect(res.sent.cancelled).toBe(3);
+    expect(res.sent.expired).toBe(3);
   });
 
   it('N-04 변형: 접수 전인데 접수가 마감됐으면 상태를 바꾸라는 본문 + S-022', async () => {
@@ -310,7 +310,7 @@ describe('발송', () => {
     await at('2026-10-31T19:00:00');
     expect(push.messages).toHaveLength(1);
     expect(push.messages[0]).toMatchObject({
-      title: '내일 접수가 시작되는 관심 대회 2개',
+      title: '내일 접수가 시작되는 대회 2개',
       body: '가 마라톤, 나 하프',
       data: { deepLink: 'berun://notifications' },
     });
@@ -377,31 +377,74 @@ describe('늦게 돈 경우 (워커 중단 뒤)', () => {
   it('오픈 당일이 된 N-01("내일 시작")은 보내지 않고, 오픈 전 N-02는 보낸다', async () => {
     await world();
     const res = await at('2026-11-01T09:55:00');
-    expect(res.sent.cancelled).toBe(3);
+    // 늦어서 안 보낸 건은 실패·취소와 따로 센다 (PRD v1.7)
+    expect(res.sent).toMatchObject({ expired: 3, cancelled: 0, failed: 0 });
+    const n01 = await notificationRows('reg_open_d1');
+    expect(n01.every((n) => n.status === 'cancelled' && n.lastError === 'expired')).toBe(true);
     expect(push.messages.map((m) => m.title)).toEqual(
       Array(3).fill('2027 서울마라톤 접수 10분 전이에요'),
     );
   });
 });
 
+describe('유효 구간 (PRD v1.7)', () => {
+  it('N-04는 D-7 당일 23:59까지만, 다음 날(D-6)이면 expired', async () => {
+    await world();
+    await at('2027-03-08T11:30:00'); // 확정
+    // 워커가 멈췄다가 D-7 23:59에 돌면 보낸다
+    push.respond = () => {
+      throw new PushTransportError('down');
+    };
+    await at('2027-03-08T12:00:00');
+    push.respond = (msgs) => msgs.map((_, i) => ({ status: 'ok', id: `ok${i}` }));
+    expect((await at('2027-03-08T23:59:00')).sent.sent).toBe(4);
+
+    // 다른 대회: D-6 아침이면 보내지 않는다
+    const user = await createUser(ctx, 'late');
+    const { race, event } = await createRace(ctx, { raceDate: '2027-04-10' });
+    await addRegistration(ctx, user.id, race.id, event.id);
+    await recalculateSchedules(ctx.db, race.id, kst('2027-03-01T00:00:00'));
+    await at('2027-04-03T11:30:00');
+    const res = await at('2027-04-04T08:00:00');
+    expect(res.sent).toMatchObject({ expired: 1, sent: 0 });
+  });
+
+  it('N-06은 대회일까지 유효 — 대회일이 지나면 expired', async () => {
+    const { race } = await world();
+    now = kst('2027-03-15T10:00:00');
+    await handleRaceUpdated(deps(), race.id, { notify: 'race_postponed' });
+    now = kst('2027-03-16T00:05:00'); // 대회일 다음 날에야 워커가 돎
+    expect((await sendDue(deps())).expired).toBe(8);
+  });
+});
+
 describe('대회 변경 (N-06)', () => {
-  it('취소: N-01~N-05 예약·확정 알림 모두 취소, 관심 ∪ 참가 예정에게 즉시 (설정 무관, 휴면 제외)', async () => {
+  it('취소: N-01~N-05 예약·확정 알림 모두 취소, 관심 ∪ 참가 예정에게 즉시 (설정 무관, 휴면 포함 — P-RET-03 예외)', async () => {
     const { race, name } = await world();
     await at('2026-10-31T18:30:00'); // N-01 확정 상태
     await ctx.db.update(races).set({ status: 'cancelled' }).where(eq(races.id, race.id));
 
     const updated = await handleRaceUpdated(deps(), race.id, { notify: 'race_cancelled' });
-    expect(updated).toMatchObject({ cancelled: 6, notified: 7 });
+    expect(updated).toMatchObject({ cancelled: 6, notified: 8 });
     expect((await scheduleRows(race.id)).every((r) => r.status === 'cancelled')).toBe(true);
     expect((await notificationRows('reg_open_d1')).every((n) => n.status === 'cancelled')).toBe(
       true,
     );
 
     const res = await sendDue(deps());
-    expect(res.sent).toBe(7);
+    expect(res.sent).toBe(8);
     const rows = await notificationRows('race_cancelled');
-    expect(rows.map((r) => name[r.userId]).sort()).toEqual(['A', 'B', 'C', 'D', 'E', 'G', 'H']);
-    expect(push.messages[0]!.title).toBe('2027 서울마라톤이 취소됐어요');
+    expect(rows.map((r) => name[r.userId]).sort()).toEqual([
+      'A',
+      'B',
+      'C',
+      'D',
+      'E',
+      'F',
+      'G',
+      'H',
+    ]);
+    expect(push.messages[0]!.title).toBe('2027 서울마라톤 대회가 취소됐어요');
   });
 
   it('일정 변경: 요약 문구 포함, 예약표 재계산', async () => {

@@ -16,7 +16,8 @@
     "dev:token": "tsx --conditions=source --env-file-if-exists=../.env scripts/dev-token.ts",
     "worker": "tsx watch --conditions=source --env-file-if-exists=../.env src/worker/index.ts",
     "start:worker": "node --env-file-if-exists=../.env dist/worker/index.js",
-    "notifications:recalc": "tsx --conditions=source --env-file-if-exists=../.env scripts/recalc-schedules.ts"
+    "notifications:recalc": "tsx --conditions=source --env-file-if-exists=../.env scripts/recalc-schedules.ts",
+    "dev:admin-totp": "tsx --conditions=source scripts/dev-admin-totp.ts"
   },
   "devDependencies": {
     "@types/node": "^22.20.5",
@@ -28,6 +29,8 @@
   },
   "dependencies": {
     "@berun/shared": "workspace:*",
+    "@fastify/cookie": "^11.1.3",
+    "@node-rs/argon2": "^2.2.2",
     "bullmq": "^5.81.5",
     "drizzle-orm": "^0.45.4",
     "fastify": "^5.12.7",

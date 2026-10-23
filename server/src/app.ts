@@ -15,6 +15,7 @@ import recordRoutes from './modules/records/index.js';
 import registrationRoutes from './modules/registrations/index.js';
 import userRoutes from './modules/users/index.js';
 import { createTokenCipher, type TokenCipher } from './lib/crypto.js';
+import type { RaceUpdateSink } from './modules/admin/races-service.js';
 import { createTokenIssuer, type TokenIssuer } from './modules/auth/tokens.js';
 import { verifiersFromConfig, type SocialVerifiers } from './modules/auth/verifiers.js';
 import { registerAppVersionCheck } from './plugins/app-version.js';
@@ -29,6 +30,7 @@ declare module 'fastify' {
     tokens: TokenIssuer;
     verifiers: SocialVerifiers;
     cipher: TokenCipher | null;
+    raceUpdates: RaceUpdateSink;
   }
 }
 
@@ -42,6 +44,8 @@ export type AppDeps = {
   verifiers?: SocialVerifiers;
   /** 원격 설정(최소 앱 버전) 캐시 시간. 기본 30초, 테스트 0 */
   configCacheMs?: number;
+  /** 관리자 대회 저장 → 예약표 재계산·N-06 (server.ts는 BullMQ 큐, 테스트는 기록용) */
+  raceUpdates?: RaceUpdateSink;
 };
 
 /** 요청 본문 최대 64KB (tech/06 1장) */
@@ -71,6 +75,18 @@ export async function buildApp(deps: AppDeps) {
   app.decorate('redis', deps.redis);
   app.decorate('tokens', await createTokenIssuer(deps.config.jwtPrivateKey));
   app.decorate('verifiers', deps.verifiers ?? verifiersFromConfig(deps.config.social));
+  app.decorate(
+    'raceUpdates',
+    deps.raceUpdates ?? {
+      raceUpdated: (job) => {
+        app.log.warn(
+          { job },
+          'raceUpdates sink not configured — notification schedules not updated',
+        );
+        return Promise.resolve();
+      },
+    },
+  );
   app.decorate(
     'cipher',
     deps.config.tokenEncKey ? createTokenCipher(deps.config.tokenEncKey) : null,

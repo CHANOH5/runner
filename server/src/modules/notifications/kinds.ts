@@ -20,6 +20,9 @@ export type RaceChangeKind = (typeof RACE_CHANGE_KINDS)[number];
 
 export type DeliverableKind = ScheduledKind | RaceChangeKind;
 
+/** 제보 처리 결과 N-07 (앱 내 알림만, 푸시 없음) */
+export type ReportResultKind = 'report_applied' | 'report_rejected';
+
 export const isScheduledKind = (k: string): k is ScheduledKind =>
   (SCHEDULED_KINDS as readonly string[]).includes(k);
 export const isRaceChangeKind = (k: string): k is RaceChangeKind =>

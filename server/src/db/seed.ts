@@ -4,9 +4,12 @@
  */
 import { sql } from 'drizzle-orm';
 import { loadDatabaseUrl } from '../config/env.js';
+import { createTokenCipher, type TokenCipher } from '../lib/crypto.js';
+import { hashPassword } from '../modules/admin/auth-service.js';
 import { addDays, kstDate } from '../lib/time.js';
 import { createDb, type Db } from './client.js';
 import {
+  adminUsers,
   appConfigs,
   authIdentities,
   notificationSettings,
@@ -269,6 +272,30 @@ function raceSeeds(now: Date): RaceSeed[] {
   ];
 }
 
+/**
+ * 개발용 관리자 (owner). 로컬 전용 값 — 운영 첫 owner는 배포 시 별도 시드 (PRD 8.2).
+ * TOTP 비밀키는 RFC 문서 예시 값. 현재 코드: pnpm --filter @berun/server dev:admin-totp
+ */
+export const DEV_ADMIN = {
+  id: '0199f000-0000-7000-8000-000000000901',
+  email: 'dev-owner@example.com',
+  password: 'dev-owner-password-local-only',
+  totpSecret: 'JBSWY3DPEHPK3PXP',
+} as const;
+
+export async function seedDevAdmin(db: Db, cipher: TokenCipher) {
+  await db
+    .insert(adminUsers)
+    .values({
+      id: DEV_ADMIN.id,
+      email: DEV_ADMIN.email,
+      role: 'owner',
+      passwordHash: await hashPassword(DEV_ADMIN.password),
+      totpSecretEnc: cipher.encrypt(DEV_ADMIN.totpSecret),
+    })
+    .onConflictDoNothing();
+}
+
 export async function seed(db: Db, now = new Date()): Promise<void> {
   const today = kstDate(now);
 
@@ -409,6 +436,13 @@ if (import.meta.filename === process.argv[1]) {
   const { db, client } = createDb(loadDatabaseUrl(), { max: 1 });
   try {
     await seed(db);
+    const key = process.env.TOKEN_ENC_KEY;
+    if (key) {
+      await seedDevAdmin(db, createTokenCipher(key));
+      console.warn(`dev admin: ${DEV_ADMIN.email}`);
+    } else {
+      console.warn('TOKEN_ENC_KEY 없음 — 개발용 관리자 시드를 건너뜀');
+    }
     console.warn('seed applied');
   } finally {
     await client.end();
