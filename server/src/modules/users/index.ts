@@ -1,17 +1,42 @@
-import { AppConfig, ConsentsReq, Me } from '@berun/shared';
+import {
+  AppConfig,
+  ConsentStatus,
+  ConsentsReq,
+  DeleteMeReq,
+  DeviceReq,
+  Me,
+  NotificationSettingsPatch,
+  NotificationSettingsRes,
+  PrivacySettings,
+  PrivacySettingsPatch,
+  ProfilePatch,
+} from '@berun/shared';
 import { inArray } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { appConfigs, userConsents } from '../../db/schema/index.js';
+import { deviceFrom } from '../../lib/device.js';
 import { validationFailed } from '../../lib/errors.js';
 import { requireUserId } from '../../plugins/auth.js';
+import { deleteAccount } from './delete-account.js';
 import { buildMe } from './me.js';
+import {
+  clearDevicePush,
+  getConsents,
+  getNotificationSettings,
+  getPrivacy,
+  updateNotificationSettings,
+  updatePrivacy,
+  updateProfile,
+  upsertDevice,
+} from './settings.js';
 import { currentTerms } from './terms.js';
 
 /**
  * 내 정보·동의·앱 설정 (tech/06 6.1, 6.3).
- * 구현: GET /app-config, GET /me, POST /me/consents (약관 재동의 게이트 예외 경로)
- * 남은 것: PATCH /me/profile, GET /me/consents, GET/PATCH /me/notification-settings, PUT /me/device, DELETE /me
+ * 구현: GET /app-config, GET /me, PATCH /me/profile, GET/PATCH /me/privacy, GET/PATCH /me/notification-settings,
+ *       GET/POST /me/consents, PUT/DELETE /me/device, DELETE /me
+ * 약관 재동의 게이트 예외: GET /me, GET/POST /me/consents, DELETE /me (tech/06 2.2)
  */
 export default async function userRoutes(app: FastifyInstance) {
   const r = app.withTypeProvider<ZodTypeProvider>();
@@ -67,6 +92,92 @@ export default async function userRoutes(app: FastifyInstance) {
           action: 'agree',
         })),
       );
+      return reply.status(204).send();
+    },
+  );
+
+  const user = [app.authenticate, app.termsGate];
+
+  r.patch(
+    '/me/profile',
+    { onRequest: user, schema: { body: ProfilePatch, response: { 200: Me } } },
+    async (request, reply) =>
+      reply
+        .header('cache-control', 'no-store')
+        .send(await updateProfile(app.db, requireUserId(request), request.body)),
+  );
+
+  // 공개 범위 (P-PRI-03). 다른 사용자에게 보이는 화면은 Phase 2 — 값만 저장한다
+  r.get(
+    '/me/privacy',
+    { onRequest: user, schema: { response: { 200: PrivacySettings } } },
+    async (request, reply) =>
+      reply
+        .header('cache-control', 'no-store')
+        .send(await getPrivacy(app.db, requireUserId(request))),
+  );
+
+  r.patch(
+    '/me/privacy',
+    { onRequest: user, schema: { body: PrivacySettingsPatch, response: { 200: PrivacySettings } } },
+    async (request, reply) =>
+      reply
+        .header('cache-control', 'no-store')
+        .send(await updatePrivacy(app.db, requireUserId(request), request.body)),
+  );
+
+  r.get(
+    '/me/notification-settings',
+    { onRequest: user, schema: { response: { 200: NotificationSettingsRes } } },
+    async (request, reply) =>
+      reply
+        .header('cache-control', 'no-store')
+        .send(await getNotificationSettings(app.db, requireUserId(request))),
+  );
+
+  r.patch(
+    '/me/notification-settings',
+    {
+      onRequest: user,
+      schema: { body: NotificationSettingsPatch, response: { 200: NotificationSettingsRes } },
+    },
+    async (request, reply) =>
+      reply
+        .header('cache-control', 'no-store')
+        .send(await updateNotificationSettings(app.db, requireUserId(request), request.body)),
+  );
+
+  r.get(
+    '/me/consents',
+    { onRequest: app.authenticate, schema: { response: { 200: ConsentStatus } } },
+    async (request, reply) =>
+      reply
+        .header('cache-control', 'no-store')
+        .send(await getConsents(app.db, requireUserId(request))),
+  );
+
+  const requireDeviceId = (request: Parameters<typeof deviceFrom>[0]) => {
+    const { deviceId } = deviceFrom(request);
+    if (!deviceId) throw validationFailed([{ path: 'x-device-id', code: 'required' }]);
+    return deviceId;
+  };
+
+  r.put('/me/device', { onRequest: user, schema: { body: DeviceReq } }, async (request, reply) => {
+    await upsertDevice(app.db, requireUserId(request), requireDeviceId(request), request.body);
+    return reply.status(204).send();
+  });
+
+  r.delete('/me/device', { onRequest: user }, async (request, reply) => {
+    await clearDevicePush(app.db, requireUserId(request), requireDeviceId(request));
+    return reply.status(204).send();
+  });
+
+  // 탈퇴는 약관 재동의 전에도 할 수 있어야 한다 (게이트 예외, P-ACC-04)
+  r.delete(
+    '/me',
+    { onRequest: app.authenticate, schema: { body: DeleteMeReq } },
+    async (request, reply) => {
+      await deleteAccount(app.db, requireUserId(request), request.body);
       return reply.status(204).send();
     },
   );
