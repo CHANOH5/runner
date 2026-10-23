@@ -91,7 +91,11 @@ export async function socialLogin(
     const tokens = await deps.db.transaction(async (tx) => {
       await tx
         .update(users)
-        .set({ lastLoginAt: now, ...(existing.status === 'dormant' && { status: 'active' }) })
+        .set({
+          lastLoginAt: now,
+          dormancyNotifiedAt: null,
+          ...(existing.status === 'dormant' && { status: 'active' }),
+        })
         .where(eq(users.id, existing.userId));
       if (revokeTokenEnc) {
         await tx

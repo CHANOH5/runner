@@ -136,17 +136,29 @@ export async function createTokenIssuer(privateKeyPem: string | undefined): Prom
           .select({ status: users.status })
           .from(users)
           .where(eq(users.id, session.userId));
-        if (!user || user.status === 'suspended') {
+        // 휴면 계정은 refresh로 이어 쓰지 않고 소셜 로그인(휴면 해제 안내 흐름)으로 보낸다 (PRD 4.1).
+        // 휴면은 1년 미접속이라 refresh token(30일)이 살아 있는 경우는 사실상 없다 — 안전장치
+        if (!user || user.status === 'suspended' || user.status === 'dormant') {
           await tx
             .update(authSessions)
             .set({ revokedAt: now })
             .where(eq(authSessions.familyId, session.familyId));
-          return { error: user ? ('ACCOUNT_SUSPENDED' as const) : ('REFRESH_INVALID' as const) };
+          return {
+            error:
+              user?.status === 'suspended'
+                ? ('ACCOUNT_SUSPENDED' as const)
+                : ('REFRESH_INVALID' as const),
+          };
         }
         await tx
           .update(authSessions)
           .set({ rotatedAt: now })
           .where(eq(authSessions.id, session.id));
+        // 앱을 열 때마다 refresh가 돌므로 이것을 "접속"으로 본다 → 휴면 판정·안내 초기화 (P-RET-03)
+        await tx
+          .update(users)
+          .set({ lastLoginAt: now, dormancyNotifiedAt: null })
+          .where(eq(users.id, session.userId));
         const next = await insertSession(
           tx,
           { userId: session.userId, deviceId: session.deviceId, familyId: session.familyId },

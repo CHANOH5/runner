@@ -239,6 +239,19 @@ Worker: social_unlink_jobs 처리 — 카카오 unlink(어드민 키 + 회원번
 - Google은 앱 로그인에서 ID 토큰만 받으므로 revoke하지 않는다 (사용자가 Google 계정 설정에서 해제 가능).
 - 탈퇴 사유는 `account_deletion_stats`에 user_id·시각 없이 날짜만 저장.
 
+## 8-1. 휴면 처리 (P-RET-03, T-023 — `server/src/modules/users/dormancy.ts`, BullMQ `accounts` 큐 `dormancy` 매일 10:00 KST)
+
+| 항목 | 구현 |
+|---|---|
+| 접속 기준 | `users.last_login_at` (없으면 `created_at`). 소셜 로그인·가입·**토큰 회전**(앱을 열면 S-001이 refresh)에서 갱신 → 앱을 열기만 해도 휴면되지 않는다 |
+| 안내 | 접속 후 335일(1년 − 30일)이 지난 `active` 계정에 한 번. `dormancy_notified_at` 기록, 접속하면 null |
+| 전환 | 접속 후 365일 + 안내 후 30일 → `status = dormant`. 안내 없이 전환하지 않는다 (배치가 늦으면 안내 후 30일 뒤) |
+| 안내 채널 | `DormancyNoticeChannel` 인터페이스. **앱 푸시**: 앱 내 알림(`kind = dormancy_notice`, 설정과 무관) + Expo 발송, 무효 토큰 삭제. **이메일**: 발송 수단이 없어 자리만(skipped) — 채널 결정 handoff |
+| 휴면 중 | 알림 대상 쿼리가 `active`만(N-06은 휴면 포함, 7장). refresh는 `REFRESH_INVALID`로 거절 → 소셜 로그인에서 `reactivated` (6.2) |
+| 하지 않는 것 | 분리 보관·파기 (법정 요건 [확인 필요]) |
+
+- 연결 해제 일일 정리(`unlink-retention`, 04:20)는 D-020에 따라 끝난 지 1년 지난 최종 실패 기록도 지운다 (`social_unlink_failed_1y`).
+
 ## 9-0. 서버 코드 구조 (T-016)
 
 ```
@@ -275,3 +288,4 @@ server/src/
 - 2026-10-21: T-020 — 알림 v1.7 규칙, 파기 배치, 관리자 저장 → 알림 큐 연결
 - 2026-10-23: T-021 — 탈퇴 구현 메모(8장)
 - 2026-10-23: T-022 — 소셜 연결 해제 워커 구현 표(8장)
+- 2026-10-23: T-023 — 휴면 처리(8-1), D-020 연결 해제 실패 기록 1년 파기

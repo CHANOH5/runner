@@ -301,6 +301,7 @@ const NotificationKind = z.enum([
   'reg_open_d1', 'reg_open_soon', 'reg_close_d1', 'race_d7', 'race_d1',
   'race_cancelled', 'race_postponed', 'race_schedule_changed',
   'report_applied', 'report_rejected', 'notice', 'marketing',
+  'dormancy_notice',   // (T-023) 휴면 30일 전 안내 — 앱 내 알림 + 푸시, deepLink berun://notifications
 ]);
 const AppNotification = z.object({
   id: Id,
@@ -391,6 +392,7 @@ const SignupRes = z.object({ tokens: TokenPair, user: Me, marketingAgreedAt: Dat
 // POST /auth/refresh
 z.object({ refreshToken: z.string() })  →  TokenPair
 // 에러: 401 REFRESH_INVALID | REFRESH_REUSED, 403 ACCOUNT_SUSPENDED
+// (T-023) 회전 성공 = 접속으로 기록(users.last_login_at, 휴면 안내 초기화). 휴면(dormant) 계정의 refresh는 401 REFRESH_INVALID → 앱은 S-002 소셜 로그인 → reactivated
 // POST /auth/logout  → 204 (본문 없음)
 ```
 
@@ -1087,3 +1089,4 @@ v1.1에서 PRD v1.2 대조 요청(handoff `20261021-planner-developer-api-v1-prd
 - 2026-10-21: T-020 구현 반영 — 알림 목록 정렬·표시 시각 `scheduled_at`, 에러 `RACE_IN_USE`, 관리자 API 구현 메모(세션·잠금 429·CSRF·감사 로그·If-Match·슬러그·종목 삭제·대표 출처·N-06c 요약·N-07)
 - 2026-10-23: T-021 구현 반영 — `GET/PATCH /me/privacy`·`DELETE /me/device` 추가, 알림 설정 GET의 `marketingChangedAt`, 탈퇴 통계·연결 해제 작업 메모, next-race·recommended·관심·제보·예측 후보·strategy 구현 메모
 - 2026-10-23: T-022 — `GET /home/next-race` missed 제외 (PRD v1.9)
+- 2026-10-23: T-023 — 알림 kind `dormancy_notice`, refresh 회전 = 접속·휴면 계정 refresh 거절

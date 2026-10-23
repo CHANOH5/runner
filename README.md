@@ -87,7 +87,7 @@ pnpm --filter @berun/server worker                 # BullMQ 워커: 1분마다 �
 ```
 
 - `.env`의 `PUSH_DRY_RUN=true`(운영이 아니면 기본값)이면 Expo로 보내지 않고 로그만 남긴다. 실제 발송은 운영 환경에서만 끈다.
-- 같은 워커가 **소셜 연결 해제**(카카오 unlink·Apple revoke, 1분마다)와 7일 정리(매일 04:20)도 돌린다. `UNLINK_DRY_RUN=true`(운영이 아니면 기본값)이면 provider를 호출하지 않고 성공으로 처리한다.
+- 같은 워커가 **소셜 연결 해제**(카카오 unlink·Apple revoke, 1분마다), 정리(매일 04:20: 7일 지난 식별자, 1년 지난 실패 기록), **휴면 처리**(매일 10:00: 30일 전 안내 → 1년 미접속 휴면)도 돌린다. `UNLINK_DRY_RUN=true`(운영이 아니면 기본값)이면 provider를 호출하지 않고 성공으로 처리한다.
 - 관리자 대회 저장 후에는 `enqueueRaceUpdated(queue, { raceId, notify? })`로 예약표 재계산·N-06을 넣는다 (`server/src/worker/queue.ts`).
 
 ### 관리자 API 로컬 확인 (T-020)
@@ -115,6 +115,18 @@ pnpm --filter @berun/server worker                 # BullMQ 워커: 1분마다 �
 - **공간 컬럼(geography)은 Drizzle 스키마에 두지 않는다.** `pnpm --filter @berun/server exec drizzle-kit generate --custom --name=<이름>`으로 빈 마이그레이션을 만들고 raw SQL로 쓴다 (예: `0002_postgis_columns.sql`의 `races.venue_point`). 조회·저장도 `sql\`...\``로 한다.
 - PK는 UUID v7을 애플리케이션에서 만든다 (PostgreSQL 16에 `uuidv7()` 없음).
 - 이미 적용된 마이그레이션 파일은 고치지 않는다. 새 파일을 추가한다.
+
+## CI
+
+`.github/workflows/ci.yml` — push·PR마다: install(`--frozen-lockfile`) → lint → typecheck → build → 테스트 DB 생성 → migrate → seed → test. PostGIS·Redis는 서비스 컨테이너(로컬과 같은 이미지·포트 55432/56379), Node는 `.nvmrc`. 비밀값은 쓰지 않는다.
+
+로컬에서 같은 순서로 확인하려면 (새 DB 이름으로, Node 22):
+
+```bash
+docker compose exec -T postgres psql -U berun -d berun -c "CREATE DATABASE berun_ci OWNER berun"
+```
+
+그 뒤 깨끗한 clone에서 `DATABASE_URL=…/berun_ci`, `TEST_DATABASE_URL=…/berun_ci_test`로 워크플로의 `run:` 단계를 순서대로 실행한다 (`berun_ci_test`는 migrate 전에 같은 방법으로 만든다).
 
 ## 테스트
 

@@ -15,6 +15,8 @@ import type { UnlinkClient, UnlinkOutcome } from './unlink-clients.js';
 export const UNLINK_RETRY_WINDOW_MS = 24 * 60 * 60 * 1000;
 export const UNLINK_MAX_BACKOFF_MS = 60 * 60 * 1000;
 export const UNLINK_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
+/** 최종 실패 기록(식별자 없음) 보관 기간 1년 (D-020) */
+export const UNLINK_FAILED_RECORD_RETENTION_MS = 365 * 24 * 60 * 60 * 1000;
 const LEASE_MS = 5 * 60 * 1000;
 const CLAIM_LIMIT = 100;
 
@@ -178,7 +180,7 @@ export async function processUnlinkJobs(deps: UnlinkDeps): Promise<UnlinkResult>
 /**
  * 7일 정리 배치 (P-RET-01, tech/04 5장): 7일이 지나도 끝나지 않은 작업은 최종 실패로 바꾸고
  * 보관 중인 식별자·Apple 토큰을 지운다. 실행마다 deletion_jobs에 건수를 남긴다 (0건이어도).
- * 끝난 작업(failed)에는 식별자가 없으므로 사유 기록으로 남긴다.
+ * 끝난 작업(failed)에는 식별자가 없으므로 사유 기록으로 남기고, 끝난 지 1년이 지나면 파기한다 (D-020).
  */
 export async function purgeStaleUnlinkJobs(db: Db, now = new Date()) {
   return db.transaction(async (tx) => {
@@ -198,11 +200,23 @@ export async function purgeStaleUnlinkJobs(db: Db, now = new Date()) {
         ),
       )
       .returning({ id: socialUnlinkJobs.id });
-    await tx.insert(deletionJobs).values({
-      jobName: 'social_unlink_identifiers_7d',
-      deletedCount: expired.length,
-      ranAt: now,
-    });
-    return { expired: expired.length };
+    // D-020: 최종 실패 기록은 끝난 지 1년 뒤 파기
+    const purged = await tx
+      .delete(socialUnlinkJobs)
+      .where(
+        and(
+          eq(socialUnlinkJobs.status, 'failed'),
+          lt(
+            socialUnlinkJobs.finishedAt,
+            new Date(now.getTime() - UNLINK_FAILED_RECORD_RETENTION_MS),
+          ),
+        ),
+      )
+      .returning({ id: socialUnlinkJobs.id });
+    await tx.insert(deletionJobs).values([
+      { jobName: 'social_unlink_identifiers_7d', deletedCount: expired.length, ranAt: now },
+      { jobName: 'social_unlink_failed_1y', deletedCount: purged.length, ranAt: now },
+    ]);
+    return { expired: expired.length, purgedFailed: purged.length };
   });
 }

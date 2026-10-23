@@ -14,6 +14,7 @@ import {
 } from '../modules/notifications/push.js';
 import { createTokenCipher } from '../lib/crypto.js';
 import { dryRunUnlinkClient, httpUnlinkClient } from '../modules/auth/unlink-clients.js';
+import { fakeEmailDormancyChannel, pushDormancyChannel } from '../modules/users/dormancy.js';
 import { createAccountsQueue, createAccountsWorker, scheduleAccountJobs } from './accounts.js';
 import { createNotificationQueue, createNotificationWorker, scheduleTick } from './queue.js';
 
@@ -49,6 +50,11 @@ const unlinkDeps = {
   cipher: config.tokenEncKey ? createTokenCipher(config.tokenEncKey) : null,
   clock: () => new Date(),
   log,
+  // 휴면 안내: 앱 푸시(알림 워커와 같은 클라이언트) + 이메일 자리(아직 발송 수단 없음)
+  dormancyChannels: [
+    pushDormancyChannel(db, push, () => new Date()),
+    fakeEmailDormancyChannel(log),
+  ],
 };
 if (config.unlink.dryRun) log.warn('UNLINK_DRY_RUN — social unlink calls are skipped');
 const accountsQueue = createAccountsQueue(connection);

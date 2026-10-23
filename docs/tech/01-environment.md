@@ -68,8 +68,10 @@
 | 브랜치 | `main` 보호, 기능은 `feat/*`, 세션별 워크트리 |
 | 코드 규칙 | TypeScript strict (`noUncheckedIndexedAccess`), ESLint (typescript-eslint type-checked), Prettier |
 | 테스트 | Vitest. 통합 테스트는 로컬 테스트 DB·Redis 사용 (README) |
+| CI | GitHub Actions `.github/workflows/ci.yml` — push·PR마다 install → lint → typecheck → build → (PostGIS·Redis 서비스 컨테이너, 로컬과 같은 이미지·포트) 테스트 DB 생성 → migrate → seed → test. Node는 `.nvmrc`(22). 비밀값·배포·외부 호출 없음 |
 
 ---
 ## 변경 이력
 - 2026-10-21: v1 초안 작성
 - 2026-10-21: T-016 — 로컬 개발 환경 구체화 (Docker 이미지·포트·테스트 DB, 코드 규칙, 테스트)
+- 2026-10-23: T-023 — CI 행 추가
