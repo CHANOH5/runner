@@ -32,7 +32,7 @@
 | 실시간 위치 전송 | 업로드: **HTTPS 배치 (확정)** / 시청: **WebSocket (Fastify + Redis Pub/Sub)로 시작**, MQTT(AWS IoT Core) 전환은 Phase 2 종료 전 결정 | Ably, Pusher | **D-007 일부 확정** (Phase 3) |
 | 작업 큐 | BullMQ (Redis) | SQS | |
 | 파일 저장 | S3 + CloudFront (배번 사진은 비공개 버킷, 서명 URL) | | |
-| 응원 웹 · 관리자 웹 | Next.js | Vite + React | |
+| 응원 웹 · 관리자 웹 | Next.js (관리자 웹: Next.js 15 App Router + React 19, `admin/`) | Vite + React | 관리자 웹 T-024 |
 | 대회 데이터 수집 | 관리자 입력 + 변경 감지 수집기(`undici`+`cheerio`, 필요한 사이트만 Playwright) → 검수 대기열 | 주최사 셀프 등록·제휴 | T-012, `05-race-data-sourcing.md` |
 | 기록 예측 | 서버 TypeScript 모듈 (Riegel + 보정) → 이후 Python 모델 | | D-004 |
 | AI 설명 생성 | Claude API (Phase 4) | | |
@@ -84,3 +84,4 @@
 - 2026-10-21: D-005~D-008, D-016 반영 — 확정 표시, 지도 래퍼·지오코딩·푸시 한도 추가, 실시간 절 정리, 분석 도구 PostHog 권장
 - 2026-10-21: 제품 분석 PostHog 확정 표시 (D-017)
 - 2026-10-21: T-016 — 검증·로깅·테스트·JWT 라이브러리 행 추가
+- 2026-10-23: T-024 — 관리자 웹 Next.js 15 + React 19 (`admin/`), 테스트 Vitest + Testing Library(jsdom)

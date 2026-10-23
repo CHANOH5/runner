@@ -54,6 +54,8 @@ jobs:
       # 워커 코드가 실수로 실행돼도 외부로 나가지 않게
       PUSH_DRY_RUN: 'true'
       UNLINK_DRY_RUN: 'true'
+      # 관리자 웹(next build)이 원격 측정을 보내지 않게
+      NEXT_TELEMETRY_DISABLED: '1'
 
     steps:
       - uses: actions/checkout@v4

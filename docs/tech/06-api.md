@@ -814,7 +814,7 @@ z.object({
 | `POST /auth/login` | — | `{ email, password }` → `{ mfaRequired: true, mfaToken }` |
 | `POST /auth/mfa` | — | `{ mfaToken, totp }` → 세션 쿠키 + `{ admin: { id, email, role }, csrfToken }` |
 | `POST /auth/logout` | OPV | 세션 종료 |
-| `GET /auth/me` | OPV | 현재 관리자 |
+| `GET /auth/me` | OPV | 현재 관리자 `{ id, email, role, csrfToken }` (`Cache-Control: no-store`). 새로고침한 관리자 웹이 같은 세션의 CSRF 토큰을 다시 받는다 (T-024) |
 | `GET/POST /admins`, `PATCH /admins/{id}` | O | 관리자 계정 생성·역할 변경·비활성화 (첫 owner는 시드) |
 
 ### 7.2 대시보드 (A-002)
@@ -1090,3 +1090,4 @@ v1.1에서 PRD v1.2 대조 요청(handoff `20261021-planner-developer-api-v1-prd
 - 2026-10-23: T-021 구현 반영 — `GET/PATCH /me/privacy`·`DELETE /me/device` 추가, 알림 설정 GET의 `marketingChangedAt`, 탈퇴 통계·연결 해제 작업 메모, next-race·recommended·관심·제보·예측 후보·strategy 구현 메모
 - 2026-10-23: T-022 — `GET /home/next-race` missed 제외 (PRD v1.9)
 - 2026-10-23: T-023 — 알림 kind `dormancy_notice`, refresh 회전 = 접속·휴면 계정 refresh 거절
+- 2026-10-23: T-024 — `GET /auth/me` 응답에 `csrfToken` 추가

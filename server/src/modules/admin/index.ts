@@ -5,7 +5,7 @@ import {
   AdminCreateRes,
   AdminLoginReq,
   AdminLoginRes,
-  AdminMe,
+  AdminSessionInfo,
   AdminMfaReq,
   AdminMfaRes,
   AdminPatchReq,
@@ -99,10 +99,15 @@ export default async function adminRoutes(app: FastifyInstance) {
     return reply.clearCookie(ADMIN_COOKIE, { path: '/api/admin' }).status(204).send();
   });
 
-  r.get('/auth/me', { ...readers, schema: { response: { 200: AdminMe } } }, async (request) => {
-    const { id, email, role } = request.admin!;
-    return { id, email, role };
-  });
+  // 관리자 웹이 새로고침 뒤 세션 확인 + CSRF 토큰 복구에 쓴다 (같은 출처·httpOnly 쿠키라 다른 사이트는 읽을 수 없음)
+  r.get(
+    '/auth/me',
+    { ...readers, schema: { response: { 200: AdminSessionInfo } } },
+    async (request, reply) => {
+      const { id, email, role, csrfToken } = request.admin!;
+      return reply.header('cache-control', 'no-store').send({ id, email, role, csrfToken });
+    },
+  );
 
   // ---- 관리자 계정 (owner) ----
   r.get('/admins', { ...owner, schema: { response: { 200: z.array(AdminAccount) } } }, async () =>
