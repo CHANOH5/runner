@@ -5,3 +5,7 @@ packages:
 
 onlyBuiltDependencies:
   - esbuild
+
+# bullmq의 선택적 네이티브 가속(msgpackr-extract). 없으면 순수 JS로 동작하므로 설치 스크립트를 돌리지 않는다
+ignoredBuiltDependencies:
+  - msgpackr-extract
