@@ -283,7 +283,15 @@ export const DEV_ADMIN = {
   totpSecret: 'JBSWY3DPEHPK3PXP',
 } as const;
 
+/** 개발용 시드·값은 운영에서 쓰지 않는다 — NODE_ENV=production이면 거부 (T-024) */
+export function assertNotProduction(what: string) {
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error(`${what}: 개발 전용 — NODE_ENV=production에서는 실행하지 않습니다`);
+  }
+}
+
 export async function seedDevAdmin(db: Db, cipher: TokenCipher) {
+  assertNotProduction('dev admin seed');
   await db
     .insert(adminUsers)
     .values({
@@ -433,6 +441,7 @@ export async function seed(db: Db, now = new Date()): Promise<void> {
 }
 
 if (import.meta.filename === process.argv[1]) {
+  assertNotProduction('db:seed');
   const { db, client } = createDb(loadDatabaseUrl(), { max: 1 });
   try {
     await seed(db);

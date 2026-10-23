@@ -21,6 +21,8 @@ export const AdminMfaReq = z.object({
 export const AdminMe = z.object({ id: Id, email: z.string(), role: AdminRole });
 export type AdminMe = z.infer<typeof AdminMe>;
 export const AdminMfaRes = z.object({ admin: AdminMe, csrfToken: z.string() });
+/** GET /auth/me — 새로고침 뒤에도 쓰기 요청을 보낼 수 있게 세션의 CSRF 토큰을 함께 준다 (T-024) */
+export const AdminSessionInfo = AdminMe.extend({ csrfToken: z.string() });
 
 export const AdminAccount = AdminMe.extend({
   disabled: z.boolean(),

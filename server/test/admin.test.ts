@@ -114,7 +114,14 @@ describe('관리자 인증 (A-001)', () => {
   it('비밀번호 → TOTP → 세션 쿠키, /auth/me, 로그아웃', async () => {
     const s = await loginAs(ctx, 'owner');
     const me = await adminCall(ctx, s, 'GET', '/auth/me');
-    expect(me.json()).toEqual({ id: s.id, email: 'owner@example.com', role: 'owner' });
+    // 새로고침 뒤 쓰기 요청을 위해 세션의 CSRF 토큰도 준다 (관리자 웹, T-024)
+    expect(me.json()).toEqual({
+      id: s.id,
+      email: 'owner@example.com',
+      role: 'owner',
+      csrfToken: s.csrf,
+    });
+    expect(me.headers['cache-control']).toBe('no-store');
     expect((await adminCall(ctx, s, 'POST', '/auth/logout')).statusCode).toBe(204);
     expect((await adminCall(ctx, s, 'GET', '/auth/me')).statusCode).toBe(401);
   });
@@ -675,5 +682,19 @@ describe('제보 처리 (A-004)', () => {
     expect((n!.payload as { body: string }).body).toBe(
       '반영 대회 정보를 고쳤어요. 알려주셔서 감사해요.',
     );
+  });
+});
+
+describe('개발용 값은 운영에서 거부 (T-024)', () => {
+  it('NODE_ENV=production이면 개발 관리자 시드를 만들지 않는다', async () => {
+    const { seedDevAdmin } = await import('../src/db/seed.js');
+    const prev = process.env.NODE_ENV;
+    process.env.NODE_ENV = 'production';
+    try {
+      await expect(seedDevAdmin(ctx.db, ctx.app.cipher!)).rejects.toThrow(/NODE_ENV=production/);
+    } finally {
+      process.env.NODE_ENV = prev;
+    }
+    expect(await ctx.db.$count(adminUsers)).toBe(0);
   });
 });
