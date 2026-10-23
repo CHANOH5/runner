@@ -213,7 +213,7 @@ app/src/components/map/
 - 한 트랜잭션: 연결 해제 작업(카카오·Apple, `next_attempt_at = now`) → `account_deletion_stats`(날짜만) → `users` 삭제.
 - `users` 삭제의 FK CASCADE로 즉시 파기: `auth_identities`, `auth_sessions`, `user_profiles`, `privacy_settings`, `notification_settings`, `devices`, `race_interests`, `race_registrations`, `run_records`, `predictions`, `notifications`(미발송 포함).
 - 보존: `user_consents`(FK 없음, 법정 기간 [확인 필요]), `race_reports`(`user_id` SET NULL로 익명화). 알림 예약은 대회 단위라 사용자 행이 없으면 대상 확정·발송 직전 확인에서 자동으로 빠진다.
-- 연결 해제 워커는 아직 없다 — 작업 행만 쌓인다 (다음 작업). Phase 3 라이브 세션·응원 링크 종료(P-ACC-04)는 테이블이 생길 때 같은 트랜잭션에 넣는다.
+- Phase 3 라이브 세션·응원 링크 종료(P-ACC-04)는 테이블이 생길 때 같은 트랜잭션에 넣는다.
 
 **탈퇴**
 ```
@@ -221,6 +221,21 @@ DB 트랜잭션: 사용자 데이터 즉시 파기 + race_reports.user_id = null
 Worker: social_unlink_jobs 처리 — 카카오 unlink(어드민 키 + 회원번호), Apple revoke(refresh token)
          실패 시 지수 백오프로 최대 24시간 재시도, 성공·최종 실패 시 행 즉시 삭제 (최대 7일 [확인 필요])
 ```
+
+**연결 해제 워커 구현 (T-022, `server/src/modules/auth/unlink-*.ts`, BullMQ `accounts` 큐)**
+
+| 항목 | 구현 |
+|---|---|
+| 대상 | 가입 중단·만료(`origin = signup`, 신규 소셜 로그인 때 "만료 + 1분"으로 예약, 중단 시 지금으로) + 탈퇴(`account_deleted`, 지금). Google은 작업 없음 |
+| 실행 | `unlink` 작업 1분마다: `status = pending` + 실행 시각이 된 행을 `FOR UPDATE SKIP LOCKED`로 집고 5분 임대 |
+| 재가입 확인 | provider 호출 **직전** `auth_identities`에 같은 (provider, provider_uid)가 있으면 해제하지 않고 작업만 삭제 |
+| provider | `UnlinkClient` 인터페이스. 카카오 `POST /v1/user/unlink`(어드민 키 + `target_id_type=user_id`), Apple `POST /auth/revoke`(refresh token, client secret = ES256 JWT). `UNLINK_DRY_RUN`(운영 외 기본 true)이면 호출 없이 성공 |
+| 응답 분류 | done: 2xx, 카카오 `-101`(이미 연결 없음), Apple `invalid_grant`(토큰 이미 무효) / transient: 네트워크·5xx·429·키·설정 문제(카카오 `-401`, Apple `invalid_client`, 설정 없음) / permanent: 그 밖의 4xx, Apple 토큰 없음·복호화 실패 |
+| 성공 | 행 삭제 (식별자를 남기지 않음) |
+| 재시도 | 실패 n번째 뒤 `min(2^(n−1)분, 60분)`. 첫 시도(`first_attempt_at`)부터 24시간이 지나면 최종 실패 |
+| 최종 실패 | `status = failed`, `provider_uid`·`revoke_token_enc` = null, `last_error`(사유 코드만), `finished_at` — 사유 기록은 남기고 식별자는 지운다 |
+| 7일 정리 | `unlink-retention` 매일 04:20 KST: 생성 7일이 지난 `pending`을 실패로 바꾸고 식별자·토큰 삭제 → `deletion_jobs`(`social_unlink_identifiers_7d`) |
+| 로그 | 식별자는 `sha256` 앞 8자리(`maskId`)로만. 토큰·클라이언트 예외 메시지는 남기지 않는다. pino `redact`에 토큰·식별자 필드명 등록(API·워커 공통 `LOG_REDACT`) |
 - Google은 앱 로그인에서 ID 토큰만 받으므로 revoke하지 않는다 (사용자가 Google 계정 설정에서 해제 가능).
 - 탈퇴 사유는 `account_deletion_stats`에 user_id·시각 없이 날짜만 저장.
 
@@ -259,3 +274,4 @@ server/src/
 - 2026-10-21: T-019 — 알림 파이프라인 구현 메모(7장): 예약표·대상·발송·시각 조건·재시도·묶음·N-06·워커
 - 2026-10-21: T-020 — 알림 v1.7 규칙, 파기 배치, 관리자 저장 → 알림 큐 연결
 - 2026-10-23: T-021 — 탈퇴 구현 메모(8장)
+- 2026-10-23: T-022 — 소셜 연결 해제 워커 구현 표(8장)

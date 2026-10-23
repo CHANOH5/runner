@@ -48,6 +48,24 @@ export type AppDeps = {
   raceUpdates?: RaceUpdateSink;
 };
 
+/**
+ * 로그에서 가리는 값: 인증 헤더·쿠키·기기 id, 그리고 실수로 객체째 로그에 넘겨도 토큰·소셜 식별자가 남지 않게
+ * 알려진 필드 이름 (tech/03 8장, T-022)
+ */
+export const LOG_REDACT = [
+  'req.headers.authorization',
+  'req.headers.cookie',
+  'req.headers["x-device-id"]',
+  '*.providerUid',
+  '*.revokeTokenEnc',
+  '*.refreshToken',
+  '*.accessToken',
+  '*.identityToken',
+  '*.authorizationCode',
+  '*.idToken',
+  '*.pushToken',
+];
+
 /** 요청 본문 최대 64KB (tech/06 1장) */
 const BODY_LIMIT = 64 * 1024;
 
@@ -55,7 +73,7 @@ function defaultLogger(config: Config): FastifyServerOptions['logger'] {
   return {
     level: config.logLevel,
     // 토큰·쿠키는 로그에 남기지 않는다. 위치 좌표·이메일도 로그에 쓰지 않는다 (P-PRI-08 취지)
-    redact: ['req.headers.authorization', 'req.headers.cookie', 'req.headers["x-device-id"]'],
+    redact: LOG_REDACT,
     ...(config.env === 'development' && {
       transport: { target: 'pino-pretty', options: { translateTime: 'SYS:HH:MM:ss' } },
     }),

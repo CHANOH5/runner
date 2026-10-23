@@ -555,12 +555,19 @@ CREATE TABLE notices (
 CREATE TABLE social_unlink_jobs (
   id              bigserial PRIMARY KEY,
   provider        text NOT NULL,                 -- kakao | apple
-  provider_uid    text NOT NULL,
-  revoke_token_enc bytea,                        -- Apple만
+  provider_uid    text,                          -- 실패·7일 경과로 끝나면 null로 지운다 (T-022)
+  revoke_token_enc bytea,                        -- Apple만. 끝나면 null
+  origin          text NOT NULL DEFAULT 'account_deleted', -- signup | account_deleted
+  status          text NOT NULL DEFAULT 'pending',         -- pending | failed (성공·재가입이면 행 삭제)
   attempts        smallint NOT NULL DEFAULT 0,
   next_attempt_at timestamptz NOT NULL DEFAULT now(),
-  created_at      timestamptz NOT NULL DEFAULT now()
+  first_attempt_at timestamptz,                  -- 재시도 24시간 기준
+  last_error      text,                          -- 사유 코드만 (식별자·토큰 없음)
+  finished_at     timestamptz,
+  created_at      timestamptz NOT NULL DEFAULT now(),
+  CHECK (status <> 'pending' OR provider_uid IS NOT NULL)
 );
+CREATE INDEX ON social_unlink_jobs (next_attempt_at) WHERE status = 'pending';
 
 -- 탈퇴 사유 통계 — user_id·시각 없이 날짜만 (PRD 4.15)
 CREATE TABLE account_deletion_stats (
@@ -640,7 +647,7 @@ CREATE TABLE deletion_jobs (                     -- 파기 배치 실행 기록 
 | 휴면 계정 | 1년 미접속 (30일 전 안내) | P-RET-03 |
 | `notifications` | 생성 후 90일 | P-RET (PRD 7.1) |
 | `notification_schedules` | `done`·`cancelled` 후 90일 | — |
-| `social_unlink_jobs` | 생성 후 7일 (성공 시 즉시 삭제) | F-072 [확인 필요] |
+| `social_unlink_jobs` | 성공·재가입 확인 시 즉시 삭제. 생성 후 7일 지난 미완료는 식별자·토큰을 지우고 실패 기록만 남김 (`social_unlink_identifiers_7d`, 04:20) | F-072 [확인 필요] |
 
 ---
 ## 변경 이력
@@ -654,3 +661,4 @@ CREATE TABLE deletion_jobs (                     -- 파기 배치 실행 기록 
 - 2026-10-21: T-018 구현 — 마이그레이션 `0003_entry_status.sql`로 `entry_status`·`entry_status_updated_at`·`entry_status_source`·`(race_id, entry_status)` 인덱스 적용. API 응답 `Registration.goalSource`를 저장할 곳이 없어 **`goal_source` 컬럼 추가** (CHECK: 값 3개 + `none` ⇔ 목표 없음). 기존 행은 목표가 있으면 `manual`로 채움
 - 2026-10-21: T-019 — `notifications`에 `attempt_count`·`next_attempt_at`·`last_error` 추가 (마이그레이션 `0004_notification_delivery.sql`). `payload`에 렌더링한 `title`·`body`·`deepLink`, `scheduleId`, `raceEventId`, `registrationId`, 푸시 티켓 요약을 둔다
 - 2026-10-21: T-020 — 마이그레이션 `0005_notification_list_index.sql`: `notifications (user_id, scheduled_at DESC, id DESC)` (알림 목록). 관리자 비밀번호·TOTP 저장 방식 메모. 파기 배치 `notifications_90d`·`notification_schedules_90d`가 `deletion_jobs`에 기록
+- 2026-10-23: T-022 — 마이그레이션 `0006_unlink_worker.sql`: `social_unlink_jobs`에 `origin`·`status`·`first_attempt_at`·`last_error`·`finished_at`, `provider_uid` nullable, 상태·출처 CHECK, 대기 인덱스. 7일 정리 규칙

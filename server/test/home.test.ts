@@ -166,6 +166,33 @@ describe('GET /v1/home/next-race (PRD 6.7 ②)', () => {
   });
 });
 
+describe('GET /v1/home/next-race — 접수 못 함 제외 (PRD v1.9)', () => {
+  it('missed는 카드와 "외 n개"에서 빠지고, missed만 남으면 next: null', async () => {
+    const user = await createUser(ctx);
+    const missed = await createRace(ctx, { name: '못 나감', inDays: 3 });
+    const real = await createRace(ctx, { name: '나감', inDays: 20 });
+    const other = await createRace(ctx, { name: '또 못 나감', inDays: 30 });
+    await addRegistration(ctx, user.id, missed.race.id, missed.event.id, { entryStatus: 'missed' });
+    const reg = await addRegistration(ctx, user.id, real.race.id, real.event.id);
+    await addRegistration(ctx, user.id, other.race.id, other.event.id, { entryStatus: 'missed' });
+
+    let res = HomeNextRace.parse((await call(ctx, user.id, 'GET', '/v1/home/next-race')).json());
+    expect([res.next?.race.name, res.moreCount]).toEqual(['나감', 0]);
+
+    await call(ctx, user.id, 'PATCH', `/v1/registrations/${reg.id}`, {
+      entryStatus: 'missed',
+      entryStatusSource: 'race_detail',
+    });
+    res = HomeNextRace.parse((await call(ctx, user.id, 'GET', '/v1/home/next-race')).json());
+    expect(res).toMatchObject({ next: null, moreCount: 0 });
+    // S-061 참가 예정 탭에는 그대로 (회색 표시용)
+    const tab = (await call(ctx, user.id, 'GET', '/v1/me/races?tab=upcoming')).json<{
+      items: unknown[];
+    }>();
+    expect(tab.items).toHaveLength(3);
+  });
+});
+
 describe('GET /v1/home/recommended (PRD 6.7 ④)', () => {
   it('내 지역·90일 안·접수 예정/중/미정, 관심·참가 예정 제외, 대회일 순', async () => {
     const user = await createUser(ctx); // fixtures: 지역 서울

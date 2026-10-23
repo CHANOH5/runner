@@ -33,6 +33,7 @@ export async function deleteAccount(db: Db, userId: string, req: DeleteMeReq, no
           provider: i.provider,
           providerUid: i.providerUid,
           revokeTokenEnc: i.revokeTokenEnc,
+          origin: 'account_deleted',
           nextAttemptAt: now,
         })),
       );

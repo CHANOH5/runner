@@ -87,6 +87,7 @@ pnpm --filter @berun/server worker                 # BullMQ 워커: 1분마다 �
 ```
 
 - `.env`의 `PUSH_DRY_RUN=true`(운영이 아니면 기본값)이면 Expo로 보내지 않고 로그만 남긴다. 실제 발송은 운영 환경에서만 끈다.
+- 같은 워커가 **소셜 연결 해제**(카카오 unlink·Apple revoke, 1분마다)와 7일 정리(매일 04:20)도 돌린다. `UNLINK_DRY_RUN=true`(운영이 아니면 기본값)이면 provider를 호출하지 않고 성공으로 처리한다.
 - 관리자 대회 저장 후에는 `enqueueRaceUpdated(queue, { raceId, notify? })`로 예약표 재계산·N-06을 넣는다 (`server/src/worker/queue.ts`).
 
 ### 관리자 API 로컬 확인 (T-020)

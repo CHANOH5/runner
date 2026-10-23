@@ -186,6 +186,24 @@ describe('GET /v1/registrations/{id}/strategy (F-021)', () => {
     const s2 = Strategy.parse((await call(ctx, userId, 'GET', url)).json());
     expect(s2.prediction?.id).toBe(s1.prediction?.id);
     expect(await ctx.db.$count(predictions)).toBe(1);
+    expect(s1.prediction?.recordsChangedSince).toBe(false);
+
+    // 기록이 바뀌면 다시 계산하지 않고 recordsChangedSince = true (PRD v1.9 6.17 — S-033 "기록이 바뀌었어요 · 다시 예측")
+    await call(ctx, userId, 'POST', '/v1/me/records', {
+      category: '5k',
+      distanceM: 5000,
+      durationSec: 1500,
+      runDate: addDays(today(), -1),
+      kind: 'training',
+      title: null,
+    });
+    const s3 = Strategy.parse((await call(ctx, userId, 'GET', url)).json());
+    expect(s3.prediction).toMatchObject({
+      id: s1.prediction?.id,
+      predictedSec: 7402,
+      recordsChangedSince: true,
+    });
+    expect(await ctx.db.$count(predictions)).toBe(1);
   });
 
   it('기록 없음 → no_records (목표 있으면 목표 스플릿만), 미지원 거리 → unsupported_distance', async () => {

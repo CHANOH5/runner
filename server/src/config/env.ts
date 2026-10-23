@@ -39,6 +39,10 @@ export const Env = DatabaseEnv.extend({
   APPLE_TEAM_ID: z.preprocess(emptyToUndefined, z.string().optional()),
   APPLE_KEY_ID: z.preprocess(emptyToUndefined, z.string().optional()),
   APPLE_PRIVATE_KEY: z.preprocess(emptyToUndefined, pem.optional()),
+  /** 카카오 연결 끊기(어드민 키). 없으면 카카오 연결 해제 작업은 일시 실패로 재시도된다 */
+  KAKAO_ADMIN_KEY: z.preprocess(emptyToUndefined, z.string().optional()),
+  /** 연결 해제 워커: true면 provider를 호출하지 않고 성공으로 처리 (운영이 아니면 기본 true) */
+  UNLINK_DRY_RUN: z.preprocess(emptyToUndefined, z.enum(['true', 'false']).optional()),
   /** 알림 워커: true면 Expo로 보내지 않고 로그만 (운영이 아니면 기본 true) */
   PUSH_DRY_RUN: z.preprocess(emptyToUndefined, z.enum(['true', 'false']).optional()),
   /** Expo "enhanced security"를 켰을 때만 필요한 access token */
@@ -65,6 +69,7 @@ export type Config = {
   tokenEncKey: string | undefined;
   social: SocialConfig;
   push: { dryRun: boolean; expoAccessToken: string | undefined; ratePerSec: number };
+  unlink: { dryRun: boolean; kakaoAdminKey: string | undefined };
 };
 
 export class ConfigError extends Error {
@@ -93,6 +98,10 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): Config {
     jwtPublicKey: env.JWT_PUBLIC_KEY,
     jwtPrivateKey: env.JWT_PRIVATE_KEY,
     tokenEncKey: env.TOKEN_ENC_KEY,
+    unlink: {
+      dryRun: env.UNLINK_DRY_RUN ? env.UNLINK_DRY_RUN === 'true' : env.NODE_ENV !== 'production',
+      kakaoAdminKey: env.KAKAO_ADMIN_KEY,
+    },
     push: {
       dryRun: env.PUSH_DRY_RUN ? env.PUSH_DRY_RUN === 'true' : env.NODE_ENV !== 'production',
       expoAccessToken: env.EXPO_ACCESS_TOKEN,

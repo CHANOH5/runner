@@ -2,7 +2,7 @@ import { QueueEvents } from 'bullmq';
 import { Redis } from 'ioredis';
 import { uuidv7 } from 'uuidv7';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { devices, races } from '../src/db/schema/index.js';
+import { devices, races, socialUnlinkJobs } from '../src/db/schema/index.js';
 import { createRateLimiter, type PushMessage } from '../src/modules/notifications/push.js';
 import { recalculateSchedules } from '../src/modules/notifications/schedule.js';
 import {
@@ -11,6 +11,11 @@ import {
   enqueueRaceUpdated,
   NOTIFICATION_QUEUE,
 } from '../src/worker/queue.js';
+import {
+  ACCOUNTS_QUEUE,
+  createAccountsQueue,
+  createAccountsWorker,
+} from '../src/worker/accounts.js';
 import { TEST_REDIS_URL } from './env.js';
 import { addInterest, createRace, createUser } from './fixtures.js';
 import { createTestContext, truncateAll, type TestContext } from './helpers.js';
@@ -82,6 +87,54 @@ describe('BullMQ 알림 워커', () => {
       await events.close();
       await queue.obliterate({ force: true });
       await queue.close();
+    }
+  });
+});
+
+describe('BullMQ 계정 작업 큐 (소셜 연결 해제)', () => {
+  it('unlink 작업이 실행 시각이 된 해제 작업을 처리한다', async () => {
+    const ctx2 = await createTestContext();
+    const connection = new Redis(TEST_REDIS_URL, { maxRetriesPerRequest: null });
+    const prefix = `berun-test-${uuidv7()}`;
+    await truncateAll(ctx2.db);
+    await ctx2.db
+      .insert(socialUnlinkJobs)
+      .values({ provider: 'kakao', providerUid: '77', nextAttemptAt: new Date() });
+    const called: string[] = [];
+    const deps = {
+      db: ctx2.db,
+      client: {
+        kakaoUnlink: (uid: string) => {
+          called.push(uid);
+          return Promise.resolve({ kind: 'done' as const });
+        },
+        appleRevoke: () => Promise.resolve({ kind: 'done' as const }),
+      },
+      cipher: ctx2.app.cipher,
+      clock: () => new Date(),
+      log: { info: () => {}, warn: () => {} },
+    };
+    const queue = createAccountsQueue(connection, prefix);
+    const events = new QueueEvents(ACCOUNTS_QUEUE, { connection, prefix });
+    const worker = createAccountsWorker(deps, connection, prefix);
+    await events.waitUntilReady();
+    try {
+      const result: unknown = await (
+        await queue.add('unlink', {})
+      ).waitUntilFinished(events, 10_000);
+      expect(result).toEqual({ done: 1, skippedResignup: 0, retried: 0, failed: 0 });
+      expect(called).toEqual(['77']);
+      const retention: unknown = await (
+        await queue.add('unlink-retention', {})
+      ).waitUntilFinished(events, 10_000);
+      expect(retention).toEqual({ expired: 0 });
+    } finally {
+      await worker.close();
+      await events.close();
+      await queue.obliterate({ force: true });
+      await queue.close();
+      await connection.quit();
+      await ctx2.close();
     }
   });
 });

@@ -43,6 +43,13 @@
       "when": 1792569638565,
       "tag": "0005_notification_list_index",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1792719491100,
+      "tag": "0006_unlink_worker",
+      "breakpoints": true
     }
   ]
 }

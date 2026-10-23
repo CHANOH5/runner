@@ -5,7 +5,7 @@ import type {
   HomeRecommended,
   RegionCode,
 } from '@berun/shared';
-import { and, asc, eq, gte, inArray, lte, sql } from 'drizzle-orm';
+import { and, asc, eq, gte, inArray, lte, ne, sql } from 'drizzle-orm';
 import type { Db } from '../../db/client.js';
 import {
   raceEvents,
@@ -96,7 +96,7 @@ export async function homeDeadlines(
 }
 
 /**
- * GET /home/next-race — 대회일 ≥ 오늘인 참가 예정 중 가장 빠른 것 (PRD 6.7 ②).
+ * GET /home/next-race — 대회일 ≥ 오늘인 참가 예정(접수 못 함 제외) 중 가장 빠른 것 (PRD v1.9 6.7 ②).
  * 같은 날이면 출발 시각 → 대회명 순. 숨김·초안 대회는 제외. 접수 상태 배지는 registration.entryStatus.
  */
 export async function homeNextRace(
@@ -115,6 +115,8 @@ export async function homeNextRace(
         eq(raceRegistrations.userId, userId),
         gte(races.raceDate, today),
         eq(races.publishStatus, 'published'),
+        // 접수 못 함은 카드·"외 n개"에서 뺀다 (PRD v1.9 6.7 ②). S-061 참가 예정 탭에는 그대로 보인다
+        ne(raceRegistrations.entryStatus, 'missed'),
       ),
     )
     .orderBy(asc(races.raceDate), sql`${raceEvents.startAt} NULLS LAST`, asc(races.name));

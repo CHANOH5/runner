@@ -66,6 +66,7 @@ export async function createTestContext(
     tokenEncKey: randomBytes(32).toString('base64'),
     social: { kakao: null, google: null, apple: null },
     push: { dryRun: true, expoAccessToken: undefined, ratePerSec: 600 },
+    unlink: { dryRun: true, kakaoAdminKey: undefined },
   };
   const { db, client } = createDb(config.databaseUrl, { max: 4 });
   const redis = new Redis(config.redisUrl, {
