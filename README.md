@@ -6,7 +6,7 @@
 
 ```
 .
-├── app/                 Expo 앱 (자리만, D-005)
+├── app/                 모바일 앱 (Expo SDK 58 + Expo Router, D-005, T-025) — 웹(react-native-web)으로도 실행
 ├── admin/               관리자 웹 (Next.js 15, A-001~A-004·A-008, tech/03 9-0-1)
 ├── packages/shared/     앱·서버·관리자 웹 공유 Zod 스키마·타입 (@berun/shared, tech/06)
 ├── server/              API 서버 (Node 22 + TypeScript + Fastify + Drizzle)
@@ -110,6 +110,24 @@ pnpm dev:admin       # API http://localhost:3000 + 관리자 웹 http://localhos
 
 관리자 API만 직접 부를 때: `POST /api/admin/v1/auth/login` → `{ mfaToken }` → `POST /auth/mfa { mfaToken, totp }` → 세션 쿠키 + `csrfToken`. 쓰기 요청에는 `X-CSRF-Token`, 대회 수정에는 `If-Match: {updatedAt}`.
 
+### 모바일 앱 (T-025)
+
+이 Mac에는 Xcode·Android SDK가 없어도 된다. **Expo 웹(react-native-web)** 으로 같은 앱을 브라우저에서 띄워 로컬 서버에 붙는다.
+
+```bash
+# .env에 DEV_LOGIN=true가 있어야 개발 전용 로그인이 된다 (.env.example 기본값)
+pnpm dev:app         # API http://localhost:3000 + 앱(웹) http://localhost:8081
+```
+
+브라우저에서 **http://localhost:8081** 을 연다 (휴대폰 크기로 보려면 개발자 도구의 기기 모드).
+
+- **개발 전용 로그인**: 로그인 화면 아래 "개발 전용 로그인" 카드에 이름(영문·숫자·`_`·`-` 1~40자)을 넣고 [개발 계정으로 로그인]. 서버가 소셜 provider를 부르지 않고 `dev:{이름}`을 그 provider의 사용자로 받는다 — 처음이면 약관·프로필 가입부터, 같은 이름이면 같은 계정이다. 카드는 개발 번들(`__DEV__`)에만 보이고, 서버는 `DEV_LOGIN=true` + `NODE_ENV≠production`일 때만 받는다 (운영이면 서버가 시작하지 않음, tech/03 8장).
+- 웹은 같은 출처 `/v1/*`를 Metro 개발 서버가 API로 넘긴다 (`app/metro.config.js`, 주소를 바꾸려면 `BERUN_API_ORIGIN=http://localhost:3001`). 서버에 CORS를 열지 않는다.
+- 3000 포트를 다른 서버가 쓰고 있으면: `PORT=3001 pnpm dev` + `BERUN_API_ORIGIN=http://localhost:3001 pnpm --filter @berun/app dev`.
+- **웹에서 안 되는 것** (웹용 대체 구현): 토큰 저장은 SecureStore 대신 localStorage, 푸시 알림 권한·토큰 등록 없음(권한은 항상 '미결정'으로 보여 안내 화면만 확인), 지도는 자리 표시(D-008 확정 전, 네이티브도 같음), [길찾기]는 지도 앱 대신 네이버·Google 지도 웹, 인앱 브라우저 대신 새 탭.
+- 실제 기기·시뮬레이터: Development Build 설정(`app/app.json`, `app/eas.json`)만 있고 빌드는 아직 하지 않았다. 빌드 후 `pnpm --filter @berun/app start`(dev client)로 붙고, API 주소는 `EXPO_PUBLIC_API_BASE_URL`로 준다 (실기기는 Mac의 LAN IP).
+- 앱 구조·테스트: `app/README.md`
+
 ## 스크립트 (루트)
 
 | 명령 | 내용 |
@@ -117,10 +135,11 @@ pnpm dev:admin       # API http://localhost:3000 + 관리자 웹 http://localhos
 | `pnpm dev` | 서버 개발 모드 (tsx watch) |
 | `pnpm dev:admin` | 서버(:3000) + 관리자 웹(:3100) 함께 |
 | `pnpm dev:admin-totp` | 개발용 관리자 2단계 인증 코드 출력 (운영에서는 거부) |
+| `pnpm dev:app` | 서버(:3000) + 모바일 앱 웹(:8081) 함께 |
 | `pnpm build` | 전체 빌드 (`packages/shared` → `server`, `admin`) |
 | `pnpm lint` | ESLint + Prettier 검사 (`pnpm format`으로 정리) |
 | `pnpm typecheck` | 전체 `tsc --noEmit` |
-| `pnpm test` | 전체 Vitest. 서버 통합 테스트는 `pnpm db:up`이 먼저 필요 |
+| `pnpm test` | 전체 테스트 (서버·관리자 웹·공유 Vitest, 앱 Jest). 서버 통합 테스트는 `pnpm db:up`이 먼저 필요 |
 | `pnpm db:up` / `db:down` | 로컬 DB·Redis 켜기·끄기 |
 | `pnpm db:migrate` / `db:seed` | 마이그레이션 / 시드 |
 | `pnpm db:generate` | Drizzle 스키마 변경 → 마이그레이션 SQL 생성 |
@@ -149,6 +168,7 @@ docker compose exec -T postgres psql -U berun -d berun -c "CREATE DATABASE berun
 - 단위 테스트: `server/src/**/*.test.ts` (예: 예측 엔진 — PRD 5.7 예시 3개를 그대로 검증)
 - 통합 테스트: `server/test/*.test.ts`. 테스트 DB `berun_test`(docker 초기화 스크립트가 만든다)를 매 실행마다 비우고 마이그레이션을 처음부터 적용한다. Redis는 DB 1번.
 - 관리자 웹: `admin/src/**/*.test.tsx` (Testing Library + jsdom, API는 가짜 fetch — DB 불필요). 로그인, 대회 저장·게시(422 누락 항목), 에러 표시.
+- 모바일 앱: `app/src/**/*.test.ts(x)` (jest-expo + React Native Testing Library, API는 가짜 — DB 불필요). API 클라이언트·토큰 갱신, 복귀 질문 규칙, 예측 화면 상태 등 단위 테스트와 주요 화면 렌더 테스트.
 - 다른 DB를 쓰려면 `TEST_DATABASE_URL`, `TEST_REDIS_URL`을 지정한다.
 
 ## 참고

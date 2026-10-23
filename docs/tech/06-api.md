@@ -395,6 +395,7 @@ z.object({ refreshToken: z.string() })  →  TokenPair
 // (T-023) 회전 성공 = 접속으로 기록(users.last_login_at, 휴면 안내 초기화). 휴면(dormant) 계정의 refresh는 401 REFRESH_INVALID → 앱은 S-002 소셜 로그인 → reactivated
 // POST /auth/logout  → 204 (본문 없음)
 ```
+- (T-025) **개발 전용 로그인**: 서버가 `DEV_LOGIN=true`이고 운영(`NODE_ENV=production`)이 아니면, provider 토큰 자리에 `dev:{이름}`(영문·숫자·`_`·`-` 1~40자)을 받아 provider 호출 없이 `providerUid = dev:{이름}`으로 처리한다. 요청·응답 스키마는 같다. 운영에서는 설정 단계에서 거부된다 (tech/03 8장).
 
 ### 6.3 내 정보 · 프로필 · 동의 · 기기 (F-003, F-002, F-071, F-072)
 | 메서드·경로 | 인증 | 설명 |
@@ -1091,3 +1092,4 @@ v1.1에서 PRD v1.2 대조 요청(handoff `20261021-planner-developer-api-v1-prd
 - 2026-10-23: T-022 — `GET /home/next-race` missed 제외 (PRD v1.9)
 - 2026-10-23: T-023 — 알림 kind `dormancy_notice`, refresh 회전 = 접속·휴면 계정 refresh 거절
 - 2026-10-23: T-024 — `GET /auth/me` 응답에 `csrfToken` 추가
+- 2026-10-23: T-025 — 개발 전용 로그인(`dev:{이름}`, 비운영만) 메모. 앱은 미구현 API(`/races/count`·`/races/calendar`·`/notices/{id}`)를 목록·알림 본문으로 대체 중 (tech/03 9-0-2)

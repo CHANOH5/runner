@@ -132,6 +132,8 @@ app/src/components/map/
 | 키 관리 | NCP Maps Client ID는 config plugin(`app.config.ts`)에 환경별로 주입. 관리자 웹의 Geocoding은 서버 측 키로만 호출 (앱에 넣지 않음) |
 | 대체 표시 | `venue_point`가 없거나 지도 로드 실패 시 주소 텍스트 + "지도 앱에서 보기"(네이버 지도 앱 URL Scheme / 웹) |
 
+> **구현 상태 (T-025)**: `app/src/components/map/MapView.tsx` 하나만 있고, D-008 최종 확정 전이라 **자리 표시**(장소명 말풍선 + "지도 준비 중")를 그린다. props는 `lat`·`lng`·`label`·`height`·`onPress`. 네이버 SDK·`types.ts`·`no-restricted-imports` 규칙은 SDK를 붙일 때 추가한다. [길찾기]·[지도 앱에서 검색]은 `lib/mapLinks.ts`가 URL 스킴으로 연다 (설치된 앱만 시트에, 실패 시 네이버 지도 웹 검색). 웹(로컬 확인)은 네이버·Google 지도 웹으로 연다.
+
 관리자 웹(A-003): 장소 주소 입력 → 서버가 NCP Geocoding 호출 → 후보 선택 → `venue_point` 저장. 실패하면 위·경도 수동 입력 (국내 범위 검증).
 
 ## 7. 알림 파이프라인 (Phase 1, F-014)
@@ -239,6 +241,19 @@ Worker: social_unlink_jobs 처리 — 카카오 unlink(어드민 키 + 회원번
 - Google은 앱 로그인에서 ID 토큰만 받으므로 revoke하지 않는다 (사용자가 Google 계정 설정에서 해제 가능).
 - 탈퇴 사유는 `account_deletion_stats`에 user_id·시각 없이 날짜만 저장.
 
+### 개발 전용 로그인 (T-025)
+
+소셜 provider 키 없이 로컬에서 앱을 확인하기 위한 장치. **운영에서는 켤 수 없다.**
+
+| 항목 | 내용 |
+|---|---|
+| 켜기 | 환경 변수 `DEV_LOGIN=true` (`.env.example` 기본값). 기본은 꺼짐 |
+| 운영 차단 | `NODE_ENV=production` + `DEV_LOGIN=true`면 `loadConfig`가 `ConfigError`로 거부해 서버·워커가 시작하지 않는다. 설정을 직접 만든 경우도 `verifiersFromConfig`가 한 번 더 거부한다 |
+| 동작 | `POST /auth/social`의 provider 토큰 자리(카카오 `accessToken`, Google `idToken`, Apple `identityToken`)에 `dev:{이름}`(영문·숫자·`_`·`-` 1~40자)을 보내면 provider를 부르지 않고 `providerUid = dev:{이름}`, 이메일 없음으로 통과. 그 뒤 가입·로그인 흐름(가입 토큰, 약관, 만 14세 판정, 세션)은 실제와 같다 |
+| 실제 키와 함께 | 켜져 있어도 `dev:`가 아닌 토큰은 실제 verifier로 넘긴다 (그 provider 키가 없으면 401 `SOCIAL_TOKEN_INVALID`) |
+| 코드 | `server/src/modules/auth/verifiers.ts` `devLoginVerifier`, `config/env.ts` `DEV_LOGIN`. 테스트 `server/test/dev-login.test.ts` |
+| 주의 | dev 계정의 소셜 연결 해제 작업은 비운영 기본 `UNLINK_DRY_RUN=true`라 외부를 부르지 않는다. 앱은 개발 번들(`__DEV__`)에서만 로그인 카드를 보여준다 |
+
 ## 8-1. 휴면 처리 (P-RET-03, T-023 — `server/src/modules/users/dormancy.ts`, BullMQ `accounts` 큐 `dormancy` 매일 10:00 KST)
 
 | 항목 | 구현 |
@@ -286,6 +301,24 @@ admin/src/
 - 새 대회 폼 임시 저장만 브라우저 localStorage(30초마다, 저장하면 지움)를 쓴다.
 - 지오코딩은 D-008 확정 전이라 좌표를 직접 붙여넣는다.
 
+## 9-0-2. 모바일 앱 구조 (T-025)
+
+```
+app/src/
+├── app/          Expo Router 화면 (S-001~S-006, (tabs) 홈·대회·기록·마이, S-011, S-020~S-024, S-030~S-033, S-060~S-066)
+├── api/          client(공통 헤더·토큰 갱신·게이트·에러) · endpoints(@berun/shared 스키마로 응답 검증) · messages(코드 → 문구)
+├── features/     화면과 분리한 규칙(부팅 판단, 복귀 질문, 예측 화면 상태, 목표·접수 상태, 폼 검증, 필터) — 단위 테스트 대상
+├── components/   ui · map/MapView(D-008 래퍼) · 공용 카드·시트
+├── lib/          KST 표기, 저장소(secureStore / kv), 푸시, 외부 링크, 지도 앱 링크
+└── stores/       Zustand: session(로그인 상태·게이트·가입 진행), toast, preview
+```
+- **토큰**: access token은 메모리, refresh token은 SecureStore (웹 대체: localStorage). 만료 30초 전부터 미리 갱신하고, 동시에 여러 요청이 와도 `/auth/refresh`는 한 번만 부른다 (회전 재사용 감지 `REFRESH_REUSED` 방지). 401 `UNAUTHENTICATED` → 갱신 1회 후 재시도 → 실패하면 토큰·캐시 삭제 + S-002 + "다시 로그인해주세요". 갱신 중 네트워크 오류는 토큰을 지우지 않는다.
+- **게이트**: 426 `UPGRADE_REQUIRED` → 강제 업데이트, 403 `TERMS_REQUIRED` → 재동의, 503 `MAINTENANCE` → 점검 화면. 스플래시도 `GET /app-config`로 먼저 판단한다 (웹은 네이티브 버전이 없어 버전 검사를 건너뛴다. `X-Platform: web`은 서버 버전 검사 대상이 아니다).
+- **공통 헤더**: `X-App-Version`(스토어 버전, 웹은 app.json), `X-Platform`, `X-Device-Id`(설치 시 생성해 기기 저장소에 보관). 생성형 POST는 `Idempotency-Key`.
+- **기기 저장 (서버 저장 없음)**: 복귀 질문 제한(대회별 무시 횟수·마지막 시각·완료), 공식 접수 안내 "다시 보지 않기", 대회 필터·보기, 최근 검색어, 마지막 지도 앱, 만 14세 미만 24시간 차단, 알림 권한 시트 1회. 로그아웃·탈퇴 시 `user.*` 키만 지운다.
+- **로컬 확인 (웹)**: Expo 웹이 같은 출처 `/v1/*`를 Metro 개발 서버 미들웨어로 API 서버에 넘긴다 (`app/metro.config.js`). 서버에 CORS를 열지 않는다. 운영 앱은 네이티브만 배포하므로 웹은 개발 확인 전용이다.
+- **API 대체 (서버 미구현)**: `GET /races/calendar` 대신 그 달 목록(`from`·`to`, 50개씩)으로 날짜별 개수를 센다. `GET /races/count` 대신 목록 첫 50개로 센다(넘으면 "50개 이상"). `GET /notices/{id}` 대신 알림에 담긴 제목·본문을 보여준다. API가 생기면 바꾼다.
+
 ## 9. 앱 원격 설정 · 강제 업데이트
 
 - `GET /app-config` (인증 불필요, CDN 캐시 5분): `min_native_version_{ios,android}` 등 `app_configs` 값.
@@ -306,3 +339,4 @@ admin/src/
 - 2026-10-23: T-022 — 소셜 연결 해제 워커 구현 표(8장)
 - 2026-10-23: T-023 — 휴면 처리(8-1), D-020 연결 해제 실패 기록 1년 파기
 - 2026-10-23: T-024 — 관리자 웹 구조(9-0-1): 같은 출처 프록시, CSRF 복구, 클라이언트 화면
+- 2026-10-23: T-025 — 모바일 앱 구조(9-0-2): 토큰·게이트·기기 저장·웹 확인 프록시·API 대체, 지도 래퍼 현재 상태(6장), 개발 전용 로그인(8장)
