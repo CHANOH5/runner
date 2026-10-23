@@ -1,5 +1,8 @@
+import { sql } from 'drizzle-orm';
 import {
   bigserial,
+  check,
+  index,
   boolean,
   date,
   integer,
@@ -16,18 +19,45 @@ import { bytea, createdAt, pk, timestamptz, updatedAt } from './columns.js';
  * subscriptions(결제)는 Phase 4.
  */
 
-/** 탈퇴 시 외부 소셜 연결 해제 재시도 큐 (F-072). 성공·최종 실패 시 즉시 삭제, 최대 7일 [확인 필요] */
-export const socialUnlinkJobs = pgTable('social_unlink_jobs', {
-  id: bigserial('id', { mode: 'number' }).primaryKey(),
-  /** kakao | apple */
-  provider: text('provider').notNull(),
-  providerUid: text('provider_uid').notNull(),
-  /** Apple만 */
-  revokeTokenEnc: bytea('revoke_token_enc'),
-  attempts: smallint('attempts').notNull().default(0),
-  nextAttemptAt: timestamptz('next_attempt_at').notNull().defaultNow(),
-  createdAt: createdAt(),
-});
+/**
+ * 외부 소셜 연결 해제 작업 (F-072, 가입 중단 F-001, tech/03 8장).
+ * 성공·재가입 확인 → 행 삭제. 최종 실패·7일 경과 → status failed + 식별자·토큰을 지우고 사유만 남긴다 (T-022).
+ */
+export const socialUnlinkJobs = pgTable(
+  'social_unlink_jobs',
+  {
+    id: bigserial('id', { mode: 'number' }).primaryKey(),
+    /** kakao | apple */
+    provider: text('provider').notNull(),
+    /** 실패·만료로 끝나면 null로 지운다 (최대 7일 보관 [확인 필요]) */
+    providerUid: text('provider_uid'),
+    /** Apple만 */
+    revokeTokenEnc: bytea('revoke_token_enc'),
+    /** signup(가입 중단·만료) | account_deleted(탈퇴) */
+    origin: text('origin').notNull().default('account_deleted'),
+    /** pending | failed */
+    status: text('status').notNull().default('pending'),
+    attempts: smallint('attempts').notNull().default(0),
+    nextAttemptAt: timestamptz('next_attempt_at').notNull().defaultNow(),
+    /** 첫 시도 시각 — 재시도 한도(24시간) 기준 */
+    firstAttemptAt: timestamptz('first_attempt_at'),
+    /** 마지막 실패 사유 (식별자·토큰 원문 없음) */
+    lastError: text('last_error'),
+    finishedAt: timestamptz('finished_at'),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    index('social_unlink_jobs_due_idx')
+      .on(t.nextAttemptAt)
+      .where(sql`${t.status} = 'pending'`),
+    check('social_unlink_jobs_status_check', sql`${t.status} IN ('pending', 'failed')`),
+    check('social_unlink_jobs_origin_check', sql`${t.origin} IN ('signup', 'account_deleted')`),
+    check(
+      'social_unlink_jobs_identifier_check',
+      sql`${t.status} <> 'pending' OR ${t.providerUid} IS NOT NULL`,
+    ),
+  ],
+);
 
 /** 탈퇴 사유 통계 — user_id·시각 없이 날짜만 (PRD 4.15) */
 export const accountDeletionStats = pgTable('account_deletion_stats', {

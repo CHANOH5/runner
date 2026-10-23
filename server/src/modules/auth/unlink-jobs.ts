@@ -30,6 +30,7 @@ export async function scheduleSignupUnlink(
       provider: v.provider,
       providerUid: v.providerUid,
       revokeTokenEnc: v.revokeTokenEnc,
+      origin: 'signup',
       nextAttemptAt: new Date(now.getTime() + (SIGNUP_TTL_SEC + 60) * 1000),
     })
     .returning({ id: socialUnlinkJobs.id });
@@ -48,6 +49,10 @@ export async function cancelPendingUnlinks(tx: Tx, provider: Provider, providerU
   await tx
     .delete(socialUnlinkJobs)
     .where(
-      and(eq(socialUnlinkJobs.provider, provider), eq(socialUnlinkJobs.providerUid, providerUid)),
+      and(
+        eq(socialUnlinkJobs.provider, provider),
+        eq(socialUnlinkJobs.providerUid, providerUid),
+        eq(socialUnlinkJobs.status, 'pending'),
+      ),
     );
 }
