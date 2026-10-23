@@ -444,7 +444,13 @@ const NotificationSettings = z.object({
   marketing: z.boolean(),            // N-08b. 변경 시 user_consents agree/withdraw 행 추가
 });
 // PATCH 요청: NotificationSettings.partial(). 응답: NotificationSettings & { marketingChangedAt: DateTime | null } (날짜 토스트, 4.14)
+// (T-021) GET도 같은 응답. marketingChangedAt = 마지막 마케팅 동의·철회 시각(이력 없으면 null). 선택 동의 철회는 marketing=false. 현재 마케팅 약관 버전이 없으면 500
 
+// (T-021 추가) GET/PATCH /me/privacy — 항목별 공개 범위 (P-PRI-03). 다른 사용자가 보는 화면은 Phase 2라 값만 저장
+z.object({ ageVisibility, genderVisibility, regionVisibility, recordsVisibility: z.enum(['public','participants','friends','private']), listedInParticipants: z.boolean() })  // PATCH는 partial().strict()
+
+// (T-021) X-Device-Id 필수(없으면 400). pushPermission은 저장 컬럼이 없어 받기만 한다 (권한 거부면 pushToken null)
+// (T-021 추가) DELETE /me/device → 204: 이 기기의 푸시 토큰만 해제. 기기 행을 지우면 FK로 그 기기 로그인 세션도 지워지므로 행은 남긴다
 // PUT /me/device
 z.object({
   pushToken: z.string().nullable(),           // Expo push token. 권한 거부면 null
@@ -453,6 +459,8 @@ z.object({
   platform: z.enum(['ios', 'android']),
 })  → 204   // 기기 식별은 X-Device-Id. 같은 pushToken이 다른 사용자에 있으면 그쪽에서 제거
 
+// (T-021) 탈퇴 사유 통계 행은 사유를 고르지 않아도(reasonCode null) 남긴다(탈퇴 수 집계). reasonText는 reasonCode = other일 때만, 아니면 400 not_allowed
+// 연결 해제 작업은 next_attempt_at = 지금으로 넣는다 (카카오·Apple, Google 없음). 파기 대상·보존 대상은 tech/03 8장
 // DELETE /me
 z.object({
   reasonCode: z.enum(['no_races', 'too_many_alerts', 'bad_prediction', 'other_app', 'privacy', 'other']).nullable(),
@@ -551,6 +559,8 @@ z.object({ regionCode: RegionCode, items: z.array(RaceSummary), filledNationwide
   - 참가 예정이 **없으면** 관심 대회 기준
   - SQL 조건: `(i.user_id IS NOT NULL AND r.id IS NULL) OR r.entry_status = 'not_registered'`
   - 마감 행의 `at`은 참가 예정자면 고른 종목의 마감(종목 값 → 없으면 유효 closesAt), 관심만이면 유효 closesAt (N-03과 같음). 마감 시각이 없으면 마감 행을 만들지 않는다
+- (T-021) `GET /home/next-race`: 게시된 대회만(숨김 제외), 같은 날이면 출발 시각 → 대회명 순. 접수 상태 `missed`도 포함 (PRD 문구 그대로 — handoff 확인 중)
+- (T-021) `GET /home/recommended`의 `regionCode`는 nullable — 프로필 지역이 없으면 전국 보충만 한다
 - 추천 조건 (PRD 6.7 ④): 게시된 대회 중
   1. `region_code` = 내 지역, 대회일 오늘 ~ 오늘+90일
   2. `registrationState` ∈ {`upcoming`, `open`, `unscheduled`} (취소·마감·종료 제외)
@@ -567,6 +577,7 @@ z.object({ regionCode: RegionCode, items: z.array(RaceSummary), filledNationwide
 ```ts
 // PUT 응답
 z.object({ interested: z.literal(true), notifyRegistrationOpen: z.boolean() }) // 접수 예정이면 true → 토스트 문구 분기 (4.8)
+// (T-021) 이미 켜진 대회는 한도 검사 없이 200. DELETE는 숨김 대회도 가능(내 대회 정리), 초안·없음은 404
 // DELETE 응답
 z.object({ interested: z.literal(false), stillRegistered: z.boolean() })
 // 에러: 422 LIMIT_EXCEEDED (resource=interests, limit=200), 404, 410
@@ -651,6 +662,7 @@ z.object({
 //   interestAutoEnabled·showOfficialRegistrationNotice는 추가(POST) 응답에서만 의미가 있고 GET·PATCH는 false
 // DELETE /registrations/{id} → 204 (참가 예정 해제). predictions.race_registration_id = null, 관심 유지, 대회일 지났으면 409 RACE_FINISHED
 
+// (T-021) strategy의 prediction = 이 참가 예정에 연결된 가장 최근 저장 예측(기록이 바뀌어도 다시 계산하지 않고 recordsChangedSince로 표시). 없으면 계산·저장
 // GET /registrations/{id}/strategy
 z.object({
   prediction: Prediction.nullable(),
@@ -674,7 +686,8 @@ z.object({
   field: z.enum(['date', 'venue', 'events', 'fee', 'registration', 'links', 'status', 'other']),
   message: z.string().trim().min(10).max(500),
 })
-// 201 { id }. 에러: 429 REPORT_LIMIT_DAILY (details.scope: 'race' | 'total'), 404, 410
+// 201 { id }. 에러: 429 REPORT_LIMIT_DAILY (details.scope: 'race' | 'total', details.limit), 404, 410
+// (T-021) 내용 길이는 앞뒤 공백 제거 후 코드포인트 기준 (too_short / too_long). 같은 대회 한도를 먼저 본다
 ```
 - 지난 대회·취소 대회도 제보 가능. 한도 판정 날짜는 KST.
 
@@ -712,6 +725,7 @@ const RecordInput = z.object({
 | `GET /me/predictions/{predictionId}` | 사용자 | 저장된 예측 그대로 (재계산 없음) |
 
 ```ts
+// (T-021) weight는 소수 3자리 반올림, emptyReason은 eligible 기록이 0개일 때만. targetDistanceM 3,000~42,195 밖은 400
 // GET /me/predictions/candidates?targetDistanceM=21097
 z.object({
   records: z.array(z.object({
@@ -1071,3 +1085,4 @@ v1.1에서 PRD v1.2 대조 요청(handoff `20261021-planner-developer-api-v1-prd
 - 2026-10-21: T-019 — PRD v1.6 반영: `PATCH /me/records/{id}` `confirmDuplicate`·409 `DUPLICATE_RECORD`, `POST /auth/social` `logged_in.reactivated`
 - 2026-10-21: T-019 — 알림 목록 항목의 문구 출처(워커가 발송 시 렌더링해 payload에 저장) 메모
 - 2026-10-21: T-020 구현 반영 — 알림 목록 정렬·표시 시각 `scheduled_at`, 에러 `RACE_IN_USE`, 관리자 API 구현 메모(세션·잠금 429·CSRF·감사 로그·If-Match·슬러그·종목 삭제·대표 출처·N-06c 요약·N-07)
+- 2026-10-23: T-021 구현 반영 — `GET/PATCH /me/privacy`·`DELETE /me/device` 추가, 알림 설정 GET의 `marketingChangedAt`, 탈퇴 통계·연결 해제 작업 메모, next-race·recommended·관심·제보·예측 후보·strategy 구현 메모

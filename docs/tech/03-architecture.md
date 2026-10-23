@@ -209,6 +209,12 @@ app/src/components/map/
 - Apple refresh token은 `TOKEN_ENC_KEY`(AES-256-GCM)로 암호화해 가입 세션·`auth_identities.revoke_token_enc`에 둔다. 운영은 KMS 데이터 키로 바꾼다.
 - 기기: `X-Device-Id`를 `devices.id`로 쓴다. 다른 사용자가 쓰던 기기면 소유자를 바꾸고 푸시 토큰을 비운다. 같은 기기의 이전 세션은 로그인 시 폐기한다.
 
+**탈퇴 구현 (T-021, `server/src/modules/users/delete-account.ts`)**
+- 한 트랜잭션: 연결 해제 작업(카카오·Apple, `next_attempt_at = now`) → `account_deletion_stats`(날짜만) → `users` 삭제.
+- `users` 삭제의 FK CASCADE로 즉시 파기: `auth_identities`, `auth_sessions`, `user_profiles`, `privacy_settings`, `notification_settings`, `devices`, `race_interests`, `race_registrations`, `run_records`, `predictions`, `notifications`(미발송 포함).
+- 보존: `user_consents`(FK 없음, 법정 기간 [확인 필요]), `race_reports`(`user_id` SET NULL로 익명화). 알림 예약은 대회 단위라 사용자 행이 없으면 대상 확정·발송 직전 확인에서 자동으로 빠진다.
+- 연결 해제 워커는 아직 없다 — 작업 행만 쌓인다 (다음 작업). Phase 3 라이브 세션·응원 링크 종료(P-ACC-04)는 테이블이 생길 때 같은 트랜잭션에 넣는다.
+
 **탈퇴**
 ```
 DB 트랜잭션: 사용자 데이터 즉시 파기 + race_reports.user_id = null + social_unlink_jobs 1행 기록 → 커밋 → 앱에 완료 응답
@@ -252,3 +258,4 @@ server/src/
 - 2026-10-21: T-018 — 가입 외부 연동 구현 메모(8장: verifier, 연결 해제 작업 예약 방식, 암호화, 기기), 공통 미들웨어 구현 상태(9-0)
 - 2026-10-21: T-019 — 알림 파이프라인 구현 메모(7장): 예약표·대상·발송·시각 조건·재시도·묶음·N-06·워커
 - 2026-10-21: T-020 — 알림 v1.7 규칙, 파기 배치, 관리자 저장 → 알림 큐 연결
+- 2026-10-23: T-021 — 탈퇴 구현 메모(8장)

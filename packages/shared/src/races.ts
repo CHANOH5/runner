@@ -147,3 +147,66 @@ export const HomeDeadlines = z.object({
   ),
 });
 export type HomeDeadlines = z.infer<typeof HomeDeadlines>;
+
+/** 1인당 관심 대회 최대 개수 — 하트로 직접 켤 때만 검사, 개수에는 자동으로 켜진 관심도 포함 (PRD v1.6 4.8) */
+export const INTEREST_LIMIT = 200;
+
+/** PUT /races/{id}/interest */
+export const InterestOnRes = z.object({
+  interested: z.literal(true),
+  /** 접수 예정이면 true → "접수 오픈 전에 알려드릴게요" 토스트 (PRD 4.8) */
+  notifyRegistrationOpen: z.boolean(),
+});
+/** DELETE /races/{id}/interest */
+export const InterestOffRes = z.object({
+  interested: z.literal(false),
+  stillRegistered: z.boolean(),
+});
+
+/** POST /races/{id}/reports (F-016) */
+export const ReportField = z.enum([
+  'date',
+  'venue',
+  'events',
+  'fee',
+  'registration',
+  'links',
+  'status',
+  'other',
+]);
+export const ReportCreateReq = z.object({
+  field: ReportField,
+  /** 10~500자 (코드포인트) */
+  message: z
+    .string()
+    .trim()
+    .refine((s) => [...s].length >= 10, { params: { code: 'too_short' } })
+    .refine((s) => [...s].length <= 500, { params: { code: 'too_long' } }),
+});
+/** 제보 한도 (KST 하루): 같은 대회 3건, 전체 10건 (PRD 4.11) */
+export const REPORT_LIMIT_PER_RACE = 3;
+export const REPORT_LIMIT_TOTAL = 10;
+
+/** GET /home/next-race (tech/06 6.5) */
+export const HomeNextRace = z.object({
+  next: z
+    .object({
+      race: RaceSummary,
+      registration: RegistrationBrief,
+      eventCategory: DistanceCategory,
+    })
+    .nullable(),
+  /** "외 n개 대회" */
+  moreCount: z.number().int(),
+  /** 기록 유도 카드 표시 여부 */
+  hasAnyRecord: z.boolean(),
+});
+export type HomeNextRace = z.infer<typeof HomeNextRace>;
+
+/** GET /home/recommended — 내 지역이 없으면(regionCode null) 전국으로만 채운다 */
+export const HomeRecommended = z.object({
+  regionCode: RegionCode.nullable(),
+  items: z.array(RaceSummary),
+  filledNationwide: z.boolean(),
+});
+export type HomeRecommended = z.infer<typeof HomeRecommended>;
