@@ -2,7 +2,7 @@ import type { DeletionReason } from '@berun/shared';
 import { Stack, useRouter } from 'expo-router';
 import { useState } from 'react';
 import { ActivityIndicator, Modal, View } from 'react-native';
-import { z } from 'zod';
+import type { z } from 'zod';
 import { api, clearLocalSession } from '../../api';
 import {
   Button,

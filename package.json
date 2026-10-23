@@ -19,6 +19,7 @@
     "db:seed": "pnpm --filter @berun/server db:seed",
     "db:generate": "pnpm --filter @berun/server db:generate",
     "dev:admin": "pnpm --parallel --filter @berun/server --filter @berun/admin dev",
+    "dev:app": "pnpm --parallel --filter @berun/server --filter @berun/app dev",
     "dev:admin-totp": "pnpm --filter @berun/server -s dev:admin-totp"
   },
   "devDependencies": {

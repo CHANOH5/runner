@@ -15,7 +15,10 @@ config.resolver.unstable_conditionNames = [
 const sharedSrc = path.resolve(__dirname, '../packages/shared/src');
 config.resolver.resolveRequest = (context, moduleName, platform) => {
   if (context.originModulePath.startsWith(sharedSrc) && moduleName.endsWith('.js')) {
-    const ts = path.resolve(path.dirname(context.originModulePath), moduleName.replace(/\.js$/, '.ts'));
+    const ts = path.resolve(
+      path.dirname(context.originModulePath),
+      moduleName.replace(/\.js$/, '.ts'),
+    );
     if (fs.existsSync(ts)) return { type: 'sourceFile', filePath: ts };
   }
   return context.resolveRequest(context, moduleName, platform);

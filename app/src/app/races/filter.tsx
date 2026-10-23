@@ -1,7 +1,7 @@
 import type { DistanceCategory, FeeBucket, RegionCode } from '@berun/shared';
 import { REGION_CODES } from '@berun/shared';
 import { useQuery } from '@tanstack/react-query';
-import { Stack, useRouter } from 'expo-router';
+import { Stack } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { api } from '../../api';
 import { Button, Chip, Field, Input, Row, Screen, Section, T } from '../../components/ui';
@@ -28,7 +28,6 @@ const toggle = <T,>(list: T[], v: T) =>
  * (50개를 넘으면 "50개 이상"). API가 생기면 그쪽으로 바꾼다 (handoff).
  */
 export default function RaceFilter() {
-  const router = useRouter();
   const { filters, setFilters } = useRaceFilters();
   const [draft, setDraft] = useState<RaceFilterState>(filters);
   const [from, setFrom] = useState(draft.period?.preset === 'custom' ? draft.period.from : '');
@@ -60,7 +59,7 @@ export default function RaceFilter() {
           ? null
           : p === 'custom'
             ? { preset: 'custom', from: from || today, to: to || today }
-            : ({ preset: p } as PeriodFilter),
+            : { preset: p },
     }));
 
   return (

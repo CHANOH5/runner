@@ -22,7 +22,7 @@ export default function Splash() {
       platform: PLATFORM,
       appVersion: APP_VERSION,
       appConfig: api.appConfig,
-      hasRefreshToken: tokenStore.hasRefreshToken,
+      hasRefreshToken: () => tokenStore.hasRefreshToken(),
       refresh: apiClient.refresh,
       me: api.me,
     });

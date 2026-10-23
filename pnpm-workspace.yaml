@@ -11,3 +11,6 @@ onlyBuiltDependencies:
 # bullmq의 선택적 네이티브 가속(msgpackr-extract). 없으면 순수 JS로 동작하므로 설치 스크립트를 돌리지 않는다
 ignoredBuiltDependencies:
   - msgpackr-extract
+  # 앱(Expo·Jest) 도구의 선택적 네이티브 빌드. 미리 빌드된 바이너리(optional dependency)를 쓰므로 설치 스크립트를 돌리지 않는다
+  - '@parcel/watcher'
+  - unrs-resolver

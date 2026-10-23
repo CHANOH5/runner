@@ -6,3 +6,5 @@ server/src/db/migrations/meta/
 *.md
 .next/
 admin/next-env.d.ts
+app/.expo/
+app/expo-env.d.ts

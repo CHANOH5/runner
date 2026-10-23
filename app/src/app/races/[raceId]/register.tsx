@@ -297,7 +297,7 @@ function RegisterForm({
       (edit
         ? (['not_registered', 'registered', 'missed'] as const)
         : (['not_registered', 'registered'] as const)
-      ).map((v) => ({ value: v as EntryStatus, label: ENTRY_STATUS_LABEL[v] })),
+      ).map((v) => ({ value: v, label: ENTRY_STATUS_LABEL[v] })),
     [edit],
   );
 

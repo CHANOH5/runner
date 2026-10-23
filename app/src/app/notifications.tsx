@@ -43,7 +43,7 @@ export default function Notifications() {
       });
       return;
     }
-    router.push(path as `/races/${string}`);
+    router.push(path);
   };
 
   return (

@@ -1,6 +1,6 @@
 import type { RunRecord } from '@berun/shared';
 import { useQueryClient, type InfiniteData } from '@tanstack/react-query';
-import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
+import { Stack, useLocalSearchParams } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { saveErrorMessage } from '../../api/messages';
 import { api } from '../../api';
@@ -36,7 +36,6 @@ export default function RecordEdit() {
 }
 
 function Editor({ record }: { record: RunRecord | null }) {
-  const router = useRouter();
   const qc = useQueryClient();
   const c = useTheme();
   const today = todayKst();

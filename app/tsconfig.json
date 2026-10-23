@@ -4,21 +4,11 @@
     "strict": true,
     "noUncheckedIndexedAccess": true,
     "noFallthroughCasesInSwitch": true,
-    "customConditions": [
-      "react-native",
-      "source"
-    ],
-    "types": [
-      "jest"
-    ],
+    "customConditions": ["react-native", "source"],
+    "types": ["jest"],
     "paths": {
-      "@/*": [
-        "./src/*"
-      ]
+      "@/*": ["./src/*"]
     }
   },
-  "include": [
-    "src",
-    "*.ts"
-  ]
+  "include": ["src", "*.ts"]
 }

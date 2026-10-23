@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
+import { Stack, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import { api } from '../../../api';
 import { saveErrorMessage } from '../../../api/messages';
@@ -32,7 +32,6 @@ const FIELDS = [
 /** S-024 대회 정보 오류 제보 (PRD 4.11, 6.13) */
 export default function Report() {
   const { raceId } = useLocalSearchParams<{ raceId: string }>();
-  const router = useRouter();
   const race = useQuery({ queryKey: ['race', raceId], queryFn: () => api.race(raceId) });
   const [field, setField] = useState<(typeof FIELDS)[number][0] | null>(null);
   const [message, setMessage] = useState('');

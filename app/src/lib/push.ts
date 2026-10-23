@@ -9,14 +9,18 @@ import { APP_VERSION } from './device';
  */
 export type PushPermission = 'granted' | 'denied' | 'undetermined';
 
+function toPermission(status: Notifications.PermissionStatus): PushPermission {
+  if (status === Notifications.PermissionStatus.GRANTED) return 'granted';
+  if (status === Notifications.PermissionStatus.DENIED) return 'denied';
+  return 'undetermined';
+}
+
 export async function getPushPermission(): Promise<PushPermission> {
-  const { status } = await Notifications.getPermissionsAsync();
-  return status === 'granted' ? 'granted' : status === 'denied' ? 'denied' : 'undetermined';
+  return toPermission((await Notifications.getPermissionsAsync()).status);
 }
 
 export async function requestPushPermission(): Promise<PushPermission> {
-  const { status } = await Notifications.requestPermissionsAsync();
-  return status === 'granted' ? 'granted' : status === 'denied' ? 'denied' : 'undetermined';
+  return toPermission((await Notifications.requestPermissionsAsync()).status);
 }
 
 async function expoPushToken(): Promise<string | null> {

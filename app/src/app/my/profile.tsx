@@ -1,6 +1,6 @@
 import type { Me, RegionCode } from '@berun/shared';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Stack, useRouter } from 'expo-router';
+import { Stack } from 'expo-router';
 import { useState } from 'react';
 import { api } from '../../api';
 import { isApiError } from '../../api/client';
@@ -36,7 +36,6 @@ export default function ProfileEdit() {
 }
 
 function Editor({ me }: { me: Me }) {
-  const router = useRouter();
   const qc = useQueryClient();
   const thisYear = Number(todayKst().slice(0, 4));
   const [nickname, setNickname] = useState(me.nickname);

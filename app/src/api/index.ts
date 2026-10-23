@@ -14,8 +14,11 @@ import { createTokenStore } from './tokens';
  * - 웹(로컬 확인): 같은 출처 /v1 → Metro 개발 서버가 localhost:3000으로 넘긴다 (metro.config.js)
  * - 그 외: http://localhost:3000/v1 (iOS 시뮬레이터)
  */
+// process.env.EXPO_PUBLIC_*는 번들 시 값으로 바뀐다 (그대로 써야 한다)
+const ENV_API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL as string | undefined;
+
 export const API_BASE_URL =
-  process.env.EXPO_PUBLIC_API_BASE_URL ??
+  ENV_API_BASE_URL ??
   (Platform.OS === 'web' && typeof window !== 'undefined'
     ? `${window.location.origin}/v1`
     : 'http://localhost:3000/v1');
@@ -43,7 +46,7 @@ export async function clearLocalSession() {
 
 export const apiClient = createApiClient({
   baseUrl: API_BASE_URL,
-  fetch: (...args) => fetch(...args),
+  fetch: (input, init) => fetch(input, init),
   tokens: tokenStore,
   headers: async () => ({
     'x-app-version': APP_VERSION,

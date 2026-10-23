@@ -78,9 +78,9 @@ export function buildQuery(query: Record<string, QueryValue> | undefined): strin
   for (const [key, value] of Object.entries(query)) {
     if (value === undefined || value === null) continue;
     if (Array.isArray(value)) {
-      for (const v of value as readonly (string | number)[]) params.append(key, String(v));
+      for (const v of value) params.append(key, String(v));
     } else {
-      params.append(key, String(value as string | number | boolean));
+      params.append(key, String(value));
     }
   }
   const s = params.toString();

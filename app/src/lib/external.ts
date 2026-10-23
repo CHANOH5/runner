@@ -48,7 +48,13 @@ export function useExternalLinkReturn(onReturn: (stayMs: number) => void) {
     async (url: string) => {
       openedAt.current = Date.now();
       const res = await WebBrowser.openBrowserAsync(url);
-      if (Platform.OS === 'ios' && (res.type === 'cancel' || res.type === 'dismiss')) finish();
+      if (
+        Platform.OS === 'ios' &&
+        (res.type === WebBrowser.WebBrowserResultType.CANCEL ||
+          res.type === WebBrowser.WebBrowserResultType.DISMISS)
+      ) {
+        finish();
+      }
     },
     [finish],
   );
