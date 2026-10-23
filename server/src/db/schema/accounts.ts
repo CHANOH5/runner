@@ -12,20 +12,28 @@ import {
 } from 'drizzle-orm/pg-core';
 import { bytea, createdAt, pk, timestamptz, updatedAt } from './columns.js';
 
-export const users = pgTable('users', {
-  id: pk(),
-  /** 소셜에서 받은 이메일, 비공개 (P-PRI-02) */
-  email: text('email'),
-  /** active | dormant | suspended | deleted */
-  status: text('status').notNull().default('active'),
-  /** 만 14세 확인용 (P-ACC-01) */
-  birthYear: smallint('birth_year').notNull(),
-  lastLoginAt: timestamptz('last_login_at'),
-  /** 기록 추가·수정·삭제 시각 → 예측 recordsChangedSince (PRD 6.14) */
-  recordsChangedAt: timestamptz('records_changed_at'),
-  createdAt: createdAt(),
-  updatedAt: updatedAt(),
-});
+export const users = pgTable(
+  'users',
+  {
+    id: pk(),
+    /** 소셜에서 받은 이메일, 비공개 (P-PRI-02) */
+    email: text('email'),
+    /** active | dormant | suspended | deleted */
+    status: text('status').notNull().default('active'),
+    /** 만 14세 확인용 (P-ACC-01) */
+    birthYear: smallint('birth_year').notNull(),
+    /** 마지막 접속 (소셜 로그인·가입·토큰 회전). 휴면 판정 기준 (P-RET-03, T-023) */
+    lastLoginAt: timestamptz('last_login_at'),
+    /** 휴면 30일 전 안내를 보낸 시각. 다시 접속하면 null (P-RET-03) */
+    dormancyNotifiedAt: timestamptz('dormancy_notified_at'),
+    /** 기록 추가·수정·삭제 시각 → 예측 recordsChangedSince (PRD 6.14) */
+    recordsChangedAt: timestamptz('records_changed_at'),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  // 휴면 배치 대상 찾기 (T-023)
+  (t) => [index('users_status_last_login_idx').on(t.status, t.lastLoginAt)],
+);
 
 export const authIdentities = pgTable(
   'auth_identities',

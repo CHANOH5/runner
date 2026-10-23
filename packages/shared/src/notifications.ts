@@ -16,6 +16,8 @@ export const NotificationKind = z.enum([
   'report_rejected',
   'notice',
   'marketing',
+  /** 휴면 30일 전 안내 (P-RET-03, T-023). 앱 내 알림 + 푸시, 설정과 무관 */
+  'dormancy_notice',
 ]);
 export type NotificationKind = z.infer<typeof NotificationKind>;
 
