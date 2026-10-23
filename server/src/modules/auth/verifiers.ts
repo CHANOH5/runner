@@ -147,10 +147,55 @@ export function appleVerifier(cfg: NonNullable<SocialConfig['apple']>): SocialVe
   };
 }
 
-export function verifiersFromConfig(social: SocialConfig): SocialVerifiers {
+/** 개발 전용 로그인 토큰 접두 (T-025). `dev:{이름}` → providerUid `dev:{이름}` */
+export const DEV_TOKEN_PREFIX = 'dev:';
+const DEV_NAME = /^[A-Za-z0-9_-]{1,40}$/;
+
+const tokenOf = (req: SocialLoginReq) =>
+  req.provider === 'kakao'
+    ? req.accessToken
+    : req.provider === 'apple'
+      ? req.identityToken
+      : req.idToken;
+
+/**
+ * 개발 전용 verifier: `dev:{이름}` 토큰은 provider를 호출하지 않고 통과시키고, 그 밖의 토큰은 실제 verifier에 넘긴다
+ * (실제 verifier가 없으면 검증 실패). 소셜 키가 없는 로컬에서 앱 화면을 확인하기 위한 것 (tech/03 8장)
+ */
+export function devLoginVerifier(provider: Provider, real?: SocialVerifier): SocialVerifier {
   return {
+    async verify(req) {
+      if (req.provider !== provider) throw socialTokenInvalid();
+      const token = tokenOf(req);
+      if (token.startsWith(DEV_TOKEN_PREFIX)) {
+        const name = token.slice(DEV_TOKEN_PREFIX.length);
+        if (!DEV_NAME.test(name)) throw socialTokenInvalid('invalid dev login name');
+        return { provider, providerUid: `${DEV_TOKEN_PREFIX}${name}`, email: null };
+      }
+      if (!real) throw socialTokenInvalid(`${provider} login is not configured`);
+      return real.verify(req);
+    },
+  };
+}
+
+export function verifiersFromConfig(
+  social: SocialConfig,
+  opts: { env: 'development' | 'test' | 'production'; devLogin: boolean } = {
+    env: 'production',
+    devLogin: false,
+  },
+): SocialVerifiers {
+  const real: SocialVerifiers = {
     ...(social.kakao && { kakao: kakaoVerifier(social.kakao) }),
     ...(social.google && { google: googleVerifier(social.google) }),
     ...(social.apple && { apple: appleVerifier(social.apple) }),
+  };
+  if (!opts.devLogin) return real;
+  // loadConfig도 막지만, 설정을 직접 만든 경우까지 한 번 더 막는다
+  if (opts.env === 'production') throw new Error('dev login must not be enabled in production');
+  return {
+    kakao: devLoginVerifier('kakao', real.kakao),
+    google: devLoginVerifier('google', real.google),
+    apple: devLoginVerifier('apple', real.apple),
   };
 }

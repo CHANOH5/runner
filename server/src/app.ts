@@ -92,7 +92,7 @@ export async function buildApp(deps: AppDeps) {
   app.decorate('db', deps.db);
   app.decorate('redis', deps.redis);
   app.decorate('tokens', await createTokenIssuer(deps.config.jwtPrivateKey));
-  app.decorate('verifiers', deps.verifiers ?? verifiersFromConfig(deps.config.social));
+  app.decorate('verifiers', deps.verifiers ?? verifiersFromConfig(deps.config.social, deps.config));
   app.decorate(
     'raceUpdates',
     deps.raceUpdates ?? {

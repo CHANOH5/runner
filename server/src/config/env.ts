@@ -49,6 +49,11 @@ export const Env = DatabaseEnv.extend({
   EXPO_ACCESS_TOKEN: z.preprocess(emptyToUndefined, z.string().optional()),
   /** 워커 1개당 초당 발송 한도. Expo 프로젝트 한도 600/초를 워커 수로 나눈다 */
   EXPO_PUSH_RATE_PER_SEC: z.coerce.number().int().min(1).max(600).default(300),
+  /**
+   * 개발 전용 로그인 (T-025, tech/03 8장): true면 소셜 토큰 자리에 `dev:{이름}`을 받아 provider 호출 없이 통과시킨다.
+   * 소셜 provider 키가 없는 로컬에서 앱을 확인하기 위한 것. 운영(production)에서는 켤 수 없다
+   */
+  DEV_LOGIN: z.preprocess(emptyToUndefined, z.enum(['true', 'false']).optional()),
 });
 
 export type SocialConfig = {
@@ -70,6 +75,8 @@ export type Config = {
   social: SocialConfig;
   push: { dryRun: boolean; expoAccessToken: string | undefined; ratePerSec: number };
   unlink: { dryRun: boolean; kakaoAdminKey: string | undefined };
+  /** 개발 전용 로그인 (`dev:{이름}` 토큰). production이면 항상 false — loadConfig가 거부한다 */
+  devLogin: boolean;
 };
 
 export class ConfigError extends Error {
@@ -88,6 +95,9 @@ function parse<T extends z.ZodType>(schema: T, source: NodeJS.ProcessEnv): z.out
 
 export function loadConfig(source: NodeJS.ProcessEnv = process.env): Config {
   const env = parse(Env, source);
+  if (env.DEV_LOGIN === 'true' && env.NODE_ENV === 'production') {
+    throw new ConfigError('환경 변수 검증 실패 — DEV_LOGIN: 운영(production)에서는 켤 수 없다');
+  }
   return {
     env: env.NODE_ENV,
     host: env.HOST,
@@ -98,6 +108,7 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): Config {
     jwtPublicKey: env.JWT_PUBLIC_KEY,
     jwtPrivateKey: env.JWT_PRIVATE_KEY,
     tokenEncKey: env.TOKEN_ENC_KEY,
+    devLogin: env.DEV_LOGIN === 'true',
     unlink: {
       dryRun: env.UNLINK_DRY_RUN ? env.UNLINK_DRY_RUN === 'true' : env.NODE_ENV !== 'production',
       kakaoAdminKey: env.KAKAO_ADMIN_KEY,
