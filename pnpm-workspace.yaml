@@ -1,6 +1,7 @@
-# app/ (Expo)은 앱 작업(T-0xx)에서 package.json을 만들 때 여기에 추가한다.
+# app/ (Expo)은 T-025에서 추가 (D-005)
 packages:
   - server
+  - app
   - admin
   - packages/*
 
