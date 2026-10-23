@@ -66,12 +66,12 @@ curl -X POST localhost:3000/v1/me/predictions \
 | 상태 | `GET /health` |
 | 앱 설정 | `GET /v1/app-config` |
 | 인증·가입 | `POST /v1/auth/social`, `POST /v1/auth/signup`, `POST /v1/auth/signup/abort`, `POST /v1/auth/refresh`, `POST /v1/auth/logout`, `GET /v1/terms/current`, `GET /v1/nicknames/availability` |
-| 내 정보 | `GET /v1/me`, `POST /v1/me/consents` |
-| 대회 | `GET /v1/races`, `GET /v1/races/{raceId}` |
+| 내 정보·설정 | `GET /v1/me`, `PATCH /v1/me/profile`, `GET·PATCH /v1/me/privacy`, `GET·PATCH /v1/me/notification-settings`, `GET·POST /v1/me/consents`, `PUT·DELETE /v1/me/device`, `DELETE /v1/me` (탈퇴) |
+| 대회 | `GET /v1/races`, `GET /v1/races/{raceId}`, `PUT·DELETE /v1/races/{raceId}/interest`, `POST /v1/races/{raceId}/reports` |
 | 참가 예정·접수 상태 | `POST /v1/races/{raceId}/registration`, `GET·PATCH·DELETE /v1/registrations/{id}`, `GET /v1/me/races?tab=` |
-| 홈 | `GET /v1/home/deadlines` |
+| 홈 | `GET /v1/home/next-race`, `GET /v1/home/deadlines`, `GET /v1/home/recommended` |
 | 기록 | `GET·POST /v1/me/records`, `PATCH·DELETE /v1/me/records/{id}` |
-| 예측 | `POST /v1/me/predictions`, `POST /v1/me/predictions/preview` |
+| 예측 | `POST /v1/me/predictions`, `POST /v1/me/predictions/preview`, `GET /v1/me/predictions/candidates`, `GET /v1/me/predictions`, `GET /v1/me/predictions/{id}`, `GET /v1/registrations/{id}/strategy` |
 | 알림 목록 | `GET /v1/me/notifications`, `GET /v1/me/notifications/unread-count`, `POST /v1/me/notifications/read` |
 | 관리자 (`/api/admin/v1`) | 인증 `POST /auth/login`·`/auth/mfa`·`/auth/logout`, `GET /auth/me` / 계정 `GET·POST /admins`, `PATCH /admins/{id}` / 대회 `GET·POST /races`, `GET·PUT·DELETE /races/{id}`, `POST /races/{id}/publish·unpublish·hide·clone`, `GET /races/duplicates`, `GET /races/{id}/impact` / 제보 `GET /reports`, `GET /reports/{id}`, `POST /reports/resolve` |
 
