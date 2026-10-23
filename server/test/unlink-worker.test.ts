@@ -270,7 +270,7 @@ describe('7일 정리 배치 (P-RET-01)', () => {
       providerUid: '1111',
       createdAt: new Date(now.getTime() - 6 * 24 * HOUR),
     });
-    expect(await purgeStaleUnlinkJobs(ctx.db, now)).toEqual({ expired: 1 });
+    expect(await purgeStaleUnlinkJobs(ctx.db, now)).toEqual({ expired: 1, purgedFailed: 0 });
     const [o] = await ctx.db.select().from(socialUnlinkJobs).where(eq(socialUnlinkJobs.id, old.id));
     expect(o).toMatchObject({
       status: 'failed',
@@ -285,10 +285,37 @@ describe('7일 정리 배치 (P-RET-01)', () => {
     expect(f).toMatchObject({ status: 'pending', providerUid: '1111' });
 
     await purgeStaleUnlinkJobs(ctx.db, now);
-    const logs = await ctx.db.select().from(deletionJobs);
+    const logs = await ctx.db.select().from(deletionJobs).orderBy(deletionJobs.id);
     expect(logs.map((l) => [l.jobName, l.deletedCount])).toEqual([
       ['social_unlink_identifiers_7d', 1],
+      ['social_unlink_failed_1y', 0],
       ['social_unlink_identifiers_7d', 0],
+      ['social_unlink_failed_1y', 0],
     ]);
+  });
+
+  it('D-020: 최종 실패 기록은 끝난 지 1년(365일)이 지나면 파기, 그 전은 남긴다', async () => {
+    const DAY = 24 * HOUR;
+    const failed = (daysAgo: number) =>
+      job({
+        status: 'failed',
+        providerUid: null,
+        lastError: 'kakao_400_-2',
+        finishedAt: new Date(now.getTime() - daysAgo * DAY),
+      });
+    await failed(366);
+    const exactly = await failed(365);
+    const recent = await failed(364);
+    const pending = await job({ createdAt: new Date(now.getTime() - DAY) });
+
+    expect(await purgeStaleUnlinkJobs(ctx.db, now)).toEqual({ expired: 0, purgedFailed: 1 });
+    expect((await rows()).map((r) => r.id).sort()).toEqual(
+      [exactly.id, recent.id, pending.id].sort(),
+    );
+    const [log] = await ctx.db
+      .select()
+      .from(deletionJobs)
+      .where(eq(deletionJobs.jobName, 'social_unlink_failed_1y'));
+    expect(log!.deletedCount).toBe(1);
   });
 });

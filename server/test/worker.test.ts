@@ -127,7 +127,7 @@ describe('BullMQ 계정 작업 큐 (소셜 연결 해제)', () => {
       const retention: unknown = await (
         await queue.add('unlink-retention', {})
       ).waitUntilFinished(events, 10_000);
-      expect(retention).toEqual({ expired: 0 });
+      expect(retention).toEqual({ expired: 0, purgedFailed: 0 });
     } finally {
       await worker.close();
       await events.close();
