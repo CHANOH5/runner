@@ -96,3 +96,18 @@ describe('Apple 토큰 revoke 응답 분류', () => {
     });
   });
 });
+
+describe('로그 가림 (defense in depth)', () => {
+  it('토큰·소셜 식별자 필드는 pino 로그에서 [Redacted]', async () => {
+    const { default: pino } = await import('pino');
+    const { LOG_REDACT } = await import('../../app.js');
+    const lines: string[] = [];
+    const log = pino({ redact: LOG_REDACT }, { write: (l: string) => void lines.push(l) });
+    log.info(
+      { job: { providerUid: '4242', revokeTokenEnc: 'abc' }, body: { refreshToken: 'rt-secret' } },
+      'x',
+    );
+    expect(lines.join('')).not.toMatch(/4242|abc|rt-secret/);
+    expect(lines.join('')).toContain('[Redacted]');
+  });
+});

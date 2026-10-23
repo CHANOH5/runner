@@ -559,7 +559,7 @@ z.object({ regionCode: RegionCode, items: z.array(RaceSummary), filledNationwide
   - 참가 예정이 **없으면** 관심 대회 기준
   - SQL 조건: `(i.user_id IS NOT NULL AND r.id IS NULL) OR r.entry_status = 'not_registered'`
   - 마감 행의 `at`은 참가 예정자면 고른 종목의 마감(종목 값 → 없으면 유효 closesAt), 관심만이면 유효 closesAt (N-03과 같음). 마감 시각이 없으면 마감 행을 만들지 않는다
-- (T-021) `GET /home/next-race`: 게시된 대회만(숨김 제외), 같은 날이면 출발 시각 → 대회명 순. 접수 상태 `missed`도 포함 (PRD 문구 그대로 — handoff 확인 중)
+- (T-021·T-022) `GET /home/next-race`: 게시된 대회만(숨김 제외), **접수 상태 `missed` 제외**(카드·`moreCount` 모두, missed만 남으면 `next: null`, PRD v1.9 6.7 ②), 같은 날이면 출발 시각 → 대회명 순
 - (T-021) `GET /home/recommended`의 `regionCode`는 nullable — 프로필 지역이 없으면 전국 보충만 한다
 - 추천 조건 (PRD 6.7 ④): 게시된 대회 중
   1. `region_code` = 내 지역, 대회일 오늘 ~ 오늘+90일
@@ -1086,3 +1086,4 @@ v1.1에서 PRD v1.2 대조 요청(handoff `20261021-planner-developer-api-v1-prd
 - 2026-10-21: T-019 — 알림 목록 항목의 문구 출처(워커가 발송 시 렌더링해 payload에 저장) 메모
 - 2026-10-21: T-020 구현 반영 — 알림 목록 정렬·표시 시각 `scheduled_at`, 에러 `RACE_IN_USE`, 관리자 API 구현 메모(세션·잠금 429·CSRF·감사 로그·If-Match·슬러그·종목 삭제·대표 출처·N-06c 요약·N-07)
 - 2026-10-23: T-021 구현 반영 — `GET/PATCH /me/privacy`·`DELETE /me/device` 추가, 알림 설정 GET의 `marketingChangedAt`, 탈퇴 통계·연결 해제 작업 메모, next-race·recommended·관심·제보·예측 후보·strategy 구현 메모
+- 2026-10-23: T-022 — `GET /home/next-race` missed 제외 (PRD v1.9)

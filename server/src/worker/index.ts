@@ -4,6 +4,7 @@
  */
 import { Redis } from 'ioredis';
 import pino from 'pino';
+import { LOG_REDACT } from '../app.js';
 import { loadConfig } from '../config/env.js';
 import { createDb } from '../db/client.js';
 import {
@@ -17,7 +18,7 @@ import { createAccountsQueue, createAccountsWorker, scheduleAccountJobs } from '
 import { createNotificationQueue, createNotificationWorker, scheduleTick } from './queue.js';
 
 const config = loadConfig();
-const log = pino({ level: config.logLevel, name: 'notification-worker' });
+const log = pino({ level: config.logLevel, name: 'worker', redact: LOG_REDACT });
 const { db, client } = createDb(config.databaseUrl, { max: 4 });
 // BullMQ는 maxRetriesPerRequest = null 연결이 필요하다
 const connection = new Redis(config.redisUrl, { maxRetriesPerRequest: null });
