@@ -644,10 +644,10 @@ CREATE TABLE deletion_jobs (                     -- 파기 배치 실행 기록 
 | `cheer_links` | 만료 후 30일 | P-RET |
 | `live_session_viewers` | 30일 경과 | P-RET |
 | `location_access_logs` | 법정 보존 기간 경과 [확인 필요] | P-LOC-43 |
-| 휴면 계정 | 1년 미접속 (30일 전 안내) | P-RET-03 |
+| 휴면 계정 | 1년 미접속 (30일 전 안내) — **파기가 아니라 `dormant` 전환** (T-023, 매일 10:00). 접속 = 소셜 로그인·가입·토큰 회전, 기준 `users.last_login_at`(없으면 가입 시각). 안내 후 30일이 지나야 전환 | P-RET-03 (분리 보관 [확인 필요]) |
 | `notifications` | 생성 후 90일 | P-RET (PRD 7.1) |
 | `notification_schedules` | `done`·`cancelled` 후 90일 | — |
-| `social_unlink_jobs` | 성공·재가입 확인 시 즉시 삭제. 생성 후 7일 지난 미완료는 식별자·토큰을 지우고 실패 기록만 남김 (`social_unlink_identifiers_7d`, 04:20) | F-072 [확인 필요] |
+| `social_unlink_jobs` | 성공·재가입 확인 시 즉시 삭제. 생성 후 7일 지난 미완료는 식별자·토큰을 지우고 실패 기록만 남김 (`social_unlink_identifiers_7d`, 04:20). **최종 실패 기록은 끝난 지 1년 후 삭제** (`social_unlink_failed_1y`, D-020) | F-072 [확인 필요], D-020 |
 
 ---
 ## 변경 이력
@@ -662,3 +662,4 @@ CREATE TABLE deletion_jobs (                     -- 파기 배치 실행 기록 
 - 2026-10-21: T-019 — `notifications`에 `attempt_count`·`next_attempt_at`·`last_error` 추가 (마이그레이션 `0004_notification_delivery.sql`). `payload`에 렌더링한 `title`·`body`·`deepLink`, `scheduleId`, `raceEventId`, `registrationId`, 푸시 티켓 요약을 둔다
 - 2026-10-21: T-020 — 마이그레이션 `0005_notification_list_index.sql`: `notifications (user_id, scheduled_at DESC, id DESC)` (알림 목록). 관리자 비밀번호·TOTP 저장 방식 메모. 파기 배치 `notifications_90d`·`notification_schedules_90d`가 `deletion_jobs`에 기록
 - 2026-10-23: T-022 — 마이그레이션 `0006_unlink_worker.sql`: `social_unlink_jobs`에 `origin`·`status`·`first_attempt_at`·`last_error`·`finished_at`, `provider_uid` nullable, 상태·출처 CHECK, 대기 인덱스. 7일 정리 규칙
+- 2026-10-23: T-023 — 마이그레이션 `0007_dormancy.sql`: `users.dormancy_notified_at`, `(status, last_login_at)` 인덱스. 파기 표에 D-020(연결 해제 실패 기록 1년)·휴면 전환 규칙
