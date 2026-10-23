@@ -4,3 +4,5 @@ coverage/
 docs/
 server/src/db/migrations/meta/
 *.md
+.next/
+admin/next-env.d.ts

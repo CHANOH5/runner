@@ -17,12 +17,15 @@
     "db:down": "docker compose down",
     "db:migrate": "pnpm --filter @berun/server db:migrate",
     "db:seed": "pnpm --filter @berun/server db:seed",
-    "db:generate": "pnpm --filter @berun/server db:generate"
+    "db:generate": "pnpm --filter @berun/server db:generate",
+    "dev:admin": "pnpm --parallel --filter @berun/server --filter @berun/admin dev",
+    "dev:admin-totp": "pnpm --filter @berun/server -s dev:admin-totp"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",
     "eslint": "^9.39.5",
     "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-react-hooks": "^5.2.0",
     "prettier": "^3.9.10",
     "typescript": "~5.9.3",
     "typescript-eslint": "^8.72.0"
