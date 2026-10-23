@@ -1,11 +1,23 @@
-import type { HomeDeadlines } from '@berun/shared';
-import { and, eq, inArray, sql } from 'drizzle-orm';
+import type {
+  DistanceCategory,
+  HomeDeadlines,
+  HomeNextRace,
+  HomeRecommended,
+  RegionCode,
+} from '@berun/shared';
+import { and, asc, eq, gte, inArray, lte, sql } from 'drizzle-orm';
 import type { Db } from '../../db/client.js';
-import { races } from '../../db/schema/index.js';
+import {
+  raceEvents,
+  raceRegistrations,
+  races,
+  runRecords,
+  userProfiles,
+} from '../../db/schema/index.js';
 import { ENTRY_ALERT_AUDIENCE } from '../../lib/entry-alert-audience.js';
 import { effectiveWindow, eventClosesAt } from '../../lib/registration-window.js';
-import { toKstIso } from '../../lib/time.js';
-import { loadRaceContext, toRaceSummary } from '../races/summary.js';
+import { addDays, kstDate, toKstIso } from '../../lib/time.js';
+import { loadRaceContext, registrationBriefFor, toRaceSummary } from '../races/summary.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const OPENS_WITHIN_MS = 7 * DAY_MS;
@@ -81,4 +93,112 @@ export async function homeDeadlines(
     (a, b) => Date.parse(a.at) - Date.parse(b.at) || a.race.name.localeCompare(b.race.name),
   );
   return { items: items.slice(0, MAX_ITEMS) };
+}
+
+/**
+ * GET /home/next-race — 대회일 ≥ 오늘인 참가 예정 중 가장 빠른 것 (PRD 6.7 ②).
+ * 같은 날이면 출발 시각 → 대회명 순. 숨김·초안 대회는 제외. 접수 상태 배지는 registration.entryStatus.
+ */
+export async function homeNextRace(
+  db: Db,
+  userId: string,
+  now = new Date(),
+): Promise<HomeNextRace> {
+  const today = kstDate(now);
+  const rows = await db
+    .select({ race: races, event: raceEvents })
+    .from(raceRegistrations)
+    .innerJoin(races, eq(races.id, raceRegistrations.raceId))
+    .innerJoin(raceEvents, eq(raceEvents.id, raceRegistrations.raceEventId))
+    .where(
+      and(
+        eq(raceRegistrations.userId, userId),
+        gte(races.raceDate, today),
+        eq(races.publishStatus, 'published'),
+      ),
+    )
+    .orderBy(asc(races.raceDate), sql`${raceEvents.startAt} NULLS LAST`, asc(races.name));
+  const hasAnyRecord = (await db.$count(runRecords, eq(runRecords.userId, userId))) > 0;
+  const first = rows[0];
+  if (!first) return { next: null, moreCount: 0, hasAnyRecord };
+
+  const ctx = await loadRaceContext(db, [first.race.id], userId);
+  return {
+    next: {
+      race: toRaceSummary(first.race, ctx, now),
+      registration: registrationBriefFor(first.race, ctx)!,
+      eventCategory: first.event.category as DistanceCategory,
+    },
+    moreCount: rows.length - 1,
+    hasAnyRecord,
+  };
+}
+
+const RECOMMEND_DAYS = 90;
+const RECOMMEND_MAX = 10;
+const RECOMMEND_MIN_LOCAL = 3;
+const RECOMMENDABLE = new Set(['upcoming', 'open', 'unscheduled']);
+
+/**
+ * GET /home/recommended (PRD 6.7 ④, tech/06 6.5): 게시 대회 중
+ * 1) 내 지역, 대회일 오늘~90일 2) 접수 예정·접수 중·접수 일정 미정 3) 관심·참가 예정 제외 4) 대회일 순 10개
+ * 5) 3개 미만이면 전국 대회에서 같은 조건으로 관심 수 많은 순 보충 (중복 없음, 합계 10개)
+ */
+export async function homeRecommended(
+  db: Db,
+  userId: string,
+  now = new Date(),
+): Promise<HomeRecommended> {
+  const today = kstDate(now);
+  const [profile] = await db
+    .select({ regionCode: userProfiles.regionCode })
+    .from(userProfiles)
+    .where(eq(userProfiles.userId, userId));
+  const regionCode = (profile?.regionCode as RegionCode | null | undefined) ?? null;
+
+  const mine = sql`${races.id} NOT IN (SELECT race_id FROM race_interests WHERE user_id = ${userId})
+    AND ${races.id} NOT IN (SELECT race_id FROM race_registrations WHERE user_id = ${userId})`;
+  const candidates = await db
+    .select({
+      race: races,
+      interestCount: sql<number>`(SELECT count(*)::int FROM race_interests i WHERE i.race_id = ${races.id})`,
+    })
+    .from(races)
+    .where(
+      and(
+        eq(races.publishStatus, 'published'),
+        gte(races.raceDate, today),
+        lte(races.raceDate, addDays(today, RECOMMEND_DAYS)),
+        mine,
+      ),
+    );
+  const ctx = await loadRaceContext(
+    db,
+    candidates.map((c) => c.race.id),
+    userId,
+  );
+  const eligible = candidates
+    .map((c) => ({ ...c, summary: toRaceSummary(c.race, ctx, now) }))
+    .filter((c) => RECOMMENDABLE.has(c.summary.registrationState));
+
+  const byDate = (a: (typeof eligible)[number], b: (typeof eligible)[number]) =>
+    a.race.raceDate.localeCompare(b.race.raceDate) || a.race.name.localeCompare(b.race.name);
+  const local = regionCode
+    ? eligible
+        .filter((c) => c.race.regionCode === regionCode)
+        .sort(byDate)
+        .slice(0, RECOMMEND_MAX)
+    : [];
+  let filledNationwide = false;
+  const items = [...local];
+  if (local.length < RECOMMEND_MIN_LOCAL) {
+    const taken = new Set(local.map((c) => c.race.id));
+    const fill = eligible
+      .filter((c) => !taken.has(c.race.id))
+      .sort((a, b) => b.interestCount - a.interestCount || byDate(a, b))
+      .slice(0, RECOMMEND_MAX - local.length);
+    filledNationwide = fill.length > 0;
+    items.push(...fill);
+  }
+  return { regionCode, items: items.map((c) => c.summary), filledNationwide };
 }

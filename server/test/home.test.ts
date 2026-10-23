@@ -1,6 +1,7 @@
-import { HomeDeadlines } from '@berun/shared';
+import { HomeDeadlines, HomeNextRace, HomeRecommended } from '@berun/shared';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { toKstIso } from '../src/lib/time.js';
+import { runRecords } from '../src/db/schema/index.js';
+import { addDays, kstDate, toKstIso } from '../src/lib/time.js';
 import {
   addInterest,
   addRegistration,
@@ -125,5 +126,84 @@ describe('GET /v1/home/deadlines (PRD v1.5 6.7 ③ — N-01~N-03과 같은 대�
     });
     await addInterest(ctx, user.id, r.race.id);
     expect((await deadlines(user.id))[0]).toMatchObject({ type: 'opens', timeKnown: false });
+  });
+});
+
+describe('GET /v1/home/next-race (PRD 6.7 ②)', () => {
+  it('대회일 ≥ 오늘인 참가 예정 중 가장 빠른 것 + 외 n개, 기록 유무', async () => {
+    const user = await createUser(ctx);
+    const empty = HomeNextRace.parse(
+      (await call(ctx, user.id, 'GET', '/v1/home/next-race')).json(),
+    );
+    expect(empty).toEqual({ next: null, moreCount: 0, hasAnyRecord: false });
+
+    const later = await createRace(ctx, { name: '나중', inDays: 30 });
+    const sooner = await createRace(ctx, {
+      name: '먼저',
+      inDays: 10,
+      events: [{ name: '풀코스', category: 'full', distanceM: 42195 }],
+    });
+    const past = await createRace(ctx, { name: '지난', inDays: -1 });
+    const hidden = await createRace(ctx, { name: '숨김', inDays: 5, publishStatus: 'hidden' });
+    for (const r of [later, sooner, past, hidden]) {
+      await addRegistration(ctx, user.id, r.race.id, r.event.id, { entryStatus: 'registered' });
+    }
+    await ctx.db.insert(runRecords).values({
+      userId: user.id,
+      distanceM: 10000,
+      durationSec: 3000,
+      runDate: addDays(kstDate(new Date()), -3),
+      category: '10k',
+      kind: 'race',
+    });
+    const res = HomeNextRace.parse((await call(ctx, user.id, 'GET', '/v1/home/next-race')).json());
+    expect(res.next).toMatchObject({
+      race: { name: '먼저', dDay: 10 },
+      registration: { eventName: '풀코스', entryStatus: 'registered' },
+      eventCategory: 'full',
+    });
+    expect([res.moreCount, res.hasAnyRecord]).toEqual([1, true]);
+  });
+});
+
+describe('GET /v1/home/recommended (PRD 6.7 ④)', () => {
+  it('내 지역·90일 안·접수 예정/중/미정, 관심·참가 예정 제외, 대회일 순', async () => {
+    const user = await createUser(ctx); // fixtures: 지역 서울
+    await createRace(ctx, { name: '서울 B', inDays: 20 });
+    await createRace(ctx, { name: '서울 A', inDays: 10 });
+    await createRace(ctx, {
+      name: '서울 C',
+      inDays: 30,
+      registrationOpensAt: null,
+      registrationClosesAt: null,
+    });
+    await createRace(ctx, { name: '서울 91일', inDays: 91 });
+    await createRace(ctx, { name: '서울 마감', registrationClosesAt: fromNow(-DAY) });
+    await createRace(ctx, { name: '서울 취소', status: 'cancelled' });
+    const mine = await createRace(ctx, { name: '서울 관심' });
+    await addInterest(ctx, user.id, mine.race.id);
+    await createRace(ctx, { name: '부산', regionCode: 'busan' });
+
+    const res = HomeRecommended.parse(
+      (await call(ctx, user.id, 'GET', '/v1/home/recommended')).json(),
+    );
+    expect(res).toMatchObject({ regionCode: 'seoul', filledNationwide: false });
+    expect(res.items.map((i) => i.name)).toEqual(['서울 A', '서울 B', '서울 C']);
+  });
+
+  it('3개 미만이면 전국에서 관심 수 많은 순으로 10개까지 보충 (중복 없음)', async () => {
+    const user = await createUser(ctx);
+    await createRace(ctx, { name: '서울 하나' });
+    const popular = await createRace(ctx, { name: '대구 인기', regionCode: 'daegu', inDays: 40 });
+    await createRace(ctx, { name: '부산 보통', regionCode: 'busan', inDays: 5 });
+    for (let i = 0; i < 3; i++) {
+      const fan = await createUser(ctx);
+      await addInterest(ctx, fan.id, popular.race.id);
+    }
+    const res = HomeRecommended.parse(
+      (await call(ctx, user.id, 'GET', '/v1/home/recommended')).json(),
+    );
+    expect(res.filledNationwide).toBe(true);
+    expect(res.items.map((i) => i.name)).toEqual(['서울 하나', '대구 인기', '부산 보통']);
   });
 });
