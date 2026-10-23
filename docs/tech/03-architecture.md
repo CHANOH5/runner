@@ -270,6 +270,22 @@ server/src/
 - 남은 공통 미들웨어: 요청 제한(Redis), 멱등 키, 관리자 감사 로그, 점검 모드(503).
 - 공용 계산: 유효 접수 기간·접수 상태 `lib/registration-window.ts`, 접수 알림·홈 접수 임박 대상 조건 `lib/entry-alert-audience.ts` (알림 워커도 이것을 쓴다).
 
+## 9-0-1. 관리자 웹 구조 (T-024)
+
+```
+admin/src/
+├── app/login/            A-001 (비밀번호 → TOTP)
+├── app/(console)/        세션 확인 레이아웃 + 화면: dashboard(A-002), races·races/new·races/[id](A-003),
+│                         reports·reports/[id](A-004), notices(A-008 자리)
+├── components/           세션(SessionProvider), 대회 폼(race-form + race-form-model), 반려 모달, 공통 UI
+└── lib/                  api(같은 출처 fetch·CSRF·에러), messages(에러 코드 → 한국어), format(빠른 입력 해석·라벨)
+```
+- **같은 출처**: 브라우저는 관리자 웹 출처의 `/api/admin/*`만 부른다. 로컬은 Next.js rewrites가 `ADMIN_API_ORIGIN`(기본 `http://localhost:3000`)으로 넘기고, 운영은 관리자 도메인 앞단(ALB)이 같은 경로를 API로 보낸다. 그래서 세션 쿠키(SameSite=Strict, path `/api/admin`)가 그대로 동작한다.
+- CSRF 토큰은 메모리에만 둔다. 새로고침하면 `GET /auth/me`가 같은 세션의 토큰을 다시 준다 (localStorage에 넣지 않음).
+- 모든 화면은 클라이언트 컴포넌트다 (서버 렌더링 시 관리자 쿠키를 다루지 않는다). 입력 검증은 `@berun/shared`의 Zod 스키마(`AdminRaceInput`)를 서버와 같이 쓴다.
+- 새 대회 폼 임시 저장만 브라우저 localStorage(30초마다, 저장하면 지움)를 쓴다.
+- 지오코딩은 D-008 확정 전이라 좌표를 직접 붙여넣는다.
+
 ## 9. 앱 원격 설정 · 강제 업데이트
 
 - `GET /app-config` (인증 불필요, CDN 캐시 5분): `min_native_version_{ios,android}` 등 `app_configs` 값.
@@ -289,3 +305,4 @@ server/src/
 - 2026-10-23: T-021 — 탈퇴 구현 메모(8장)
 - 2026-10-23: T-022 — 소셜 연결 해제 워커 구현 표(8장)
 - 2026-10-23: T-023 — 휴면 처리(8-1), D-020 연결 해제 실패 기록 1년 파기
+- 2026-10-23: T-024 — 관리자 웹 구조(9-0-1): 같은 출처 프록시, CSRF 복구, 클라이언트 화면

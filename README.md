@@ -7,7 +7,8 @@
 ```
 .
 ├── app/                 Expo 앱 (자리만, D-005)
-├── packages/shared/     앱·서버 공유 Zod 스키마·타입 (@berun/shared, tech/06)
+├── admin/               관리자 웹 (Next.js 15, A-001~A-004·A-008, tech/03 9-0-1)
+├── packages/shared/     앱·서버·관리자 웹 공유 Zod 스키마·타입 (@berun/shared, tech/06)
 ├── server/              API 서버 (Node 22 + TypeScript + Fastify + Drizzle)
 │   ├── src/
 │   │   ├── app.ts           buildApp(의존성 주입) — 테스트도 이걸 쓴다
@@ -90,18 +91,33 @@ pnpm --filter @berun/server worker                 # BullMQ 워커: 1분마다 �
 - 같은 워커가 **소셜 연결 해제**(카카오 unlink·Apple revoke, 1분마다), 정리(매일 04:20: 7일 지난 식별자, 1년 지난 실패 기록), **휴면 처리**(매일 10:00: 30일 전 안내 → 1년 미접속 휴면)도 돌린다. `UNLINK_DRY_RUN=true`(운영이 아니면 기본값)이면 provider를 호출하지 않고 성공으로 처리한다.
 - 관리자 대회 저장 후에는 `enqueueRaceUpdated(queue, { raceId, notify? })`로 예약표 재계산·N-06을 넣는다 (`server/src/worker/queue.ts`).
 
-### 관리자 API 로컬 확인 (T-020)
+### 관리자 웹 (T-024)
 
-- `.env`에 `TOKEN_ENC_KEY`(`openssl rand -base64 32`)가 있으면 `pnpm db:seed`가 **개발용 owner** `dev-owner@example.com` / `dev-owner-password-local-only`를 만든다 (로컬 전용 값, 운영 첫 owner는 배포 시 별도 시드).
-- 2단계 인증 코드: `pnpm --filter @berun/server dev:admin-totp`
-- 순서: `POST /api/admin/v1/auth/login` → `{ mfaToken }` → `POST /auth/mfa { mfaToken, totp }` → 세션 쿠키 + `csrfToken`. 쓰기 요청에는 `X-CSRF-Token`, 대회 수정에는 `If-Match: {updatedAt}`.
+```bash
+# .env에 TOKEN_ENC_KEY가 있어야 개발용 관리자가 시드된다 (없으면: openssl rand -base64 32 결과를 넣고)
+pnpm db:seed
+pnpm dev:admin       # API http://localhost:3000 + 관리자 웹 http://localhost:3100
+```
+
+브라우저에서 **http://localhost:3100** 을 열고 로그인한다.
+
+- **개발용 로그인 계정** (로컬 전용, 시드 `server/src/db/seed.ts`의 `DEV_ADMIN`): 이메일 `dev-owner@example.com`, 비밀번호 `dev-owner-password-local-only`. 운영 첫 owner는 배포 시 별도로 만든다.
+- **2단계 인증 코드**: 다른 터미널에서 `pnpm dev:admin-totp` → 6자리 코드(30초 유효). 개발용 TOTP 시드 비밀값은 시드 파일에 고정되어 있어 인증 앱에 등록하지 않아도 된다.
+- 개발용 계정 시드와 TOTP 스크립트는 `NODE_ENV=production`이면 에러로 멈춘다. 운영에서 동작하는 로그인 우회는 없다.
+- 관리자 웹은 같은 출처의 `/api/admin/*`를 API로 프록시한다 (`next.config.ts` rewrites, API 주소를 바꾸려면 `ADMIN_API_ORIGIN`). 세션 쿠키·CSRF는 관리자 API 그대로다.
+- 화면: 로그인(A-001), 대시보드(A-002, API가 있는 대회·제보 수만), 대회 목록·등록·수정(A-003), 오류 제보(A-004), 공지·푸시(A-008, 자리만).
+- 대회 폼 빠른 입력: 날짜 `20270315`·`0315`, 시각 `1000`·`9`, 종목 프리셋(하프+풀 등), 공통값 적용, `⌘/Ctrl+S` 저장, `⌘/Ctrl+Enter` 저장하고 새 대회(지역·종류 유지), 새 대회 30초 임시 저장, 복제.
+
+관리자 API만 직접 부를 때: `POST /api/admin/v1/auth/login` → `{ mfaToken }` → `POST /auth/mfa { mfaToken, totp }` → 세션 쿠키 + `csrfToken`. 쓰기 요청에는 `X-CSRF-Token`, 대회 수정에는 `If-Match: {updatedAt}`.
 
 ## 스크립트 (루트)
 
 | 명령 | 내용 |
 |---|---|
 | `pnpm dev` | 서버 개발 모드 (tsx watch) |
-| `pnpm build` | 전체 빌드 (`packages/shared` → `server`) |
+| `pnpm dev:admin` | 서버(:3000) + 관리자 웹(:3100) 함께 |
+| `pnpm dev:admin-totp` | 개발용 관리자 2단계 인증 코드 출력 (운영에서는 거부) |
+| `pnpm build` | 전체 빌드 (`packages/shared` → `server`, `admin`) |
 | `pnpm lint` | ESLint + Prettier 검사 (`pnpm format`으로 정리) |
 | `pnpm typecheck` | 전체 `tsc --noEmit` |
 | `pnpm test` | 전체 Vitest. 서버 통합 테스트는 `pnpm db:up`이 먼저 필요 |
@@ -132,6 +148,7 @@ docker compose exec -T postgres psql -U berun -d berun -c "CREATE DATABASE berun
 
 - 단위 테스트: `server/src/**/*.test.ts` (예: 예측 엔진 — PRD 5.7 예시 3개를 그대로 검증)
 - 통합 테스트: `server/test/*.test.ts`. 테스트 DB `berun_test`(docker 초기화 스크립트가 만든다)를 매 실행마다 비우고 마이그레이션을 처음부터 적용한다. Redis는 DB 1번.
+- 관리자 웹: `admin/src/**/*.test.tsx` (Testing Library + jsdom, API는 가짜 fetch — DB 불필요). 로그인, 대회 저장·게시(422 누락 항목), 에러 표시.
 - 다른 DB를 쓰려면 `TEST_DATABASE_URL`, `TEST_REDIS_URL`을 지정한다.
 
 ## 참고
