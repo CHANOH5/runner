@@ -120,7 +120,7 @@ export function rankCandidates(
     });
 }
 
-function emptyReason(records: EngineRecord[]): 'none' | 'all_older_than_365d' {
+export function emptyReason(records: EngineRecord[]): 'none' | 'all_older_than_365d' {
   const inDistance = records.filter(
     (r) => r.distanceM >= m.eligible.minDistanceM && r.distanceM <= m.eligible.maxDistanceM,
   );
