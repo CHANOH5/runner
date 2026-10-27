@@ -37,10 +37,7 @@ export default function Notifications() {
     const path = deepLinkToPath(n.deepLink);
     if (!path || path === '/notifications') return;
     if (path.startsWith('/notices/')) {
-      router.push({
-        pathname: '/notices/[noticeId]',
-        params: { noticeId: path.slice(9), title: n.title, body: n.body },
-      });
+      router.push({ pathname: '/notices/[noticeId]', params: { noticeId: path.slice(9) } });
       return;
     }
     router.push(path);

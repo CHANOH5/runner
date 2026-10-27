@@ -24,8 +24,8 @@ const toggle = <T,>(list: T[], v: T) =>
   list.includes(v) ? list.filter((x) => x !== v) : [...list, v];
 
 /**
- * S-021 필터 모드 (PRD 4.6). 결과 수: 개수 API(/races/count)가 아직 없어 목록 첫 50개로 센다
- * (50개를 넘으면 "50개 이상"). API가 생기면 그쪽으로 바꾼다 (handoff).
+ * S-021 필터 모드 (PRD 4.6). 결과 수는 GET /races/count ("128개 대회 보기", 리스트 보기 기준 —
+ * "종료 포함"을 따른다. 캘린더는 지난 날짜도 항상 보인다, PRD v1.12 4.5)
  */
 export default function RaceFilter() {
   const { filters, setFilters } = useRaceFilters();
@@ -44,12 +44,11 @@ export default function RaceFilter() {
   const query = filtersToQuery(draft, today);
   const count = useQuery({
     queryKey: ['races', 'filter-count', query],
-    queryFn: () => api.races({ ...query, limit: 50 }),
+    queryFn: () => api.raceCount(query),
     enabled: !customError,
   });
-  const n = count.data?.items.length ?? null;
-  const more = !!count.data?.nextCursor;
-  const label = n === null ? '대회 보기' : more ? '50개 이상 대회 보기' : `${n}개 대회 보기`;
+  const n = count.data?.count ?? null;
+  const label = n === null ? '대회 보기' : `${n.toLocaleString('ko-KR')}개 대회 보기`;
 
   const setPeriod = (p: PeriodFilter['preset']) =>
     setDraft((d) => ({
@@ -185,6 +184,9 @@ export default function RaceFilter() {
               onPress={() => setDraft({ ...draft, hideCancelled: !draft.hideCancelled })}
             />
           </Row>
+          <T variant="caption" muted>
+            캘린더는 지난 날짜도 함께 보여요
+          </T>
         </Section>
       </Screen>
     </>
