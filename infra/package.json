@@ -2,7 +2,7 @@
   "name": "@berun/infra",
   "version": "0.0.0",
   "private": true,
-  "description": "AWS CDK — staging·prod 스택 (T-029, tech/07). synth만 하고 배포는 사용자가 직접",
+  "description": "AWS CDK — 서버 1대(Berun-Single, D-022)와 확장 단계 스택(T-029, tech/07). synth만 하고 배포는 사용자가 직접",
   "type": "module",
   "scripts": {
     "synth": "cdk synth --quiet",

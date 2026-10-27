@@ -1,5 +1,6 @@
 /**
- * 환경별 설정 (T-029, tech/07). 값은 최소 사양에서 시작하고 실측 후 올린다.
+ * 확장 단계 환경별 설정 (T-029, D-022, tech/07 9장) — 지금은 배포하지 않고 synth·테스트로만 유지한다.
+ * 값은 최소 사양에서 시작하고 실측 후 올린다.
  * 도메인·관리자 허용 IP·인증서는 아직 정해지지 않아([미정] PRD Q-12) cdk context로 넘긴다:
  *   cdk synth -c stage=staging -c domain=berun.app -c certificateArn=arn:... -c adminAllowCidrs=203.0.113.10/32
  */
