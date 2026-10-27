@@ -388,3 +388,25 @@ export const ResolveReportsReq = z
     }
   });
 export type ResolveReportsReq = z.infer<typeof ResolveReportsReq>;
+
+// ---- 원격 설정 (7.7) ----
+/** app_configs 키별 값 형식. 이 표에 없는 키는 PUT 400 */
+export const APP_CONFIG_VALUES = {
+  min_native_version_ios: z.string().regex(/^\d+\.\d+\.\d+$/),
+  min_native_version_android: z.string().regex(/^\d+\.\d+\.\d+$/),
+  maintenance: z.object({ active: z.boolean(), until: DateTime.nullable() }),
+  support_email: z.email().nullable(),
+  coverage_target: z.number().int().min(0).nullable(),
+  /** 개인정보 처리방침 주소 (PRD v1.11 4.2) */
+  privacy_policy_url: z.url({ protocol: /^https?$/ }).nullable(),
+} as const;
+export type AppConfigKey = keyof typeof APP_CONFIG_VALUES;
+export const AppConfigKey = z.enum(
+  Object.keys(APP_CONFIG_VALUES) as [AppConfigKey, ...AppConfigKey[]],
+);
+export const AdminAppConfig = z.object({
+  key: z.string(),
+  value: z.unknown(),
+  updatedAt: DateTime,
+});
+export const AdminAppConfigPutReq = z.object({ value: z.unknown() });

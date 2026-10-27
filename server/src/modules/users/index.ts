@@ -51,12 +51,14 @@ export default async function userRoutes(app: FastifyInstance) {
           'min_native_version_android',
           'maintenance',
           'support_email',
+          'privacy_policy_url',
         ]),
       );
     const get = (k: string) => rows.find((row) => row.key === k)?.value;
     const str = (v: unknown, fallback: string) => (typeof v === 'string' ? v : fallback);
     const maintenance = AppConfig.shape.maintenance.safeParse(get('maintenance'));
     const email = AppConfig.shape.supportEmail.safeParse(get('support_email') ?? null);
+    const privacy = AppConfig.shape.privacyPolicyUrl.safeParse(get('privacy_policy_url') ?? null);
     return reply.header('cache-control', 'public, max-age=300').send({
       minNativeVersion: {
         ios: str(get('min_native_version_ios'), '0.0.0'),
@@ -64,6 +66,8 @@ export default async function userRoutes(app: FastifyInstance) {
       },
       maintenance: maintenance.success ? maintenance.data : { active: false, until: null },
       supportEmail: email.success ? email.data : null,
+      // 값이 없거나(개발 환경) 형식이 틀리면 null → 앱은 "개인정보 수집·이용 동의" 전문을 연다 (PRD v1.11 4.2)
+      privacyPolicyUrl: privacy.success ? privacy.data : null,
     });
   });
 

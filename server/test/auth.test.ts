@@ -424,6 +424,7 @@ describe('최소 앱 버전 (426)·앱 설정', () => {
       minNativeVersion: { ios: '1.2.0', android: '1.0.0' },
       maintenance: { active: false, until: null },
       supportEmail: null,
+      privacyPolicyUrl: null,
     });
   });
 });

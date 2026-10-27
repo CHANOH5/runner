@@ -136,5 +136,7 @@ export const AppConfig = z.object({
   minNativeVersion: z.object({ ios: z.string(), android: z.string() }),
   maintenance: z.object({ active: z.boolean(), until: DateTime.nullable() }),
   supportEmail: z.email().nullable(),
+  /** 개인정보 처리방침 주소 (PRD v1.11 4.2). null이면 앱은 "개인정보 수집·이용 동의" 전문을 연다 */
+  privacyPolicyUrl: z.url({ protocol: /^https?$/ }).nullable(),
 });
 export type AppConfig = z.infer<typeof AppConfig>;

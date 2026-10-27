@@ -1,6 +1,8 @@
 import cookie from '@fastify/cookie';
 import {
   AdminAccount,
+  AdminAppConfig,
+  AdminAppConfigPutReq,
   AdminCreateReq,
   AdminCreateRes,
   AdminLoginReq,
@@ -23,6 +25,7 @@ import {
   DedupeWarning,
   DuplicatesQuery,
   HideReq,
+  AppConfigKey,
   Id,
   Impact,
   ResolveReportsReq,
@@ -32,6 +35,7 @@ import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 import { adminUsers } from '../../db/schema/index.js';
+import { listAppConfigs, putAppConfig } from './app-configs-service.js';
 import { adminLogin, adminVerifyMfa, createAdmin, patchAdmin, toAccount } from './auth-service.js';
 import { OWNER, READERS, registerAuditLog, requireAdmin, WRITERS } from './guard.js';
 import {
@@ -55,7 +59,8 @@ import { ADMIN_COOKIE, destroyAdminSession, SESSION_ABSOLUTE_MS } from './sessio
  * 인증: 이메일 + 비밀번호 → TOTP → httpOnly 세션 쿠키, 쓰기 요청은 X-CSRF-Token (tech/06 2.3).
  * 권한: owner 전부 / operator 대회·제보 쓰기 / viewer 조회 (PRD 8.1). 쓰기는 모두 admin_audit_logs.
  * 구현: 인증, 관리자 계정, 대회(목록·초안·저장·게시·숨김·삭제·복제·중복·영향), 제보
- * 남은 것: 대시보드, 수집 후보, 공지·푸시, 원격 설정, 지오코딩(D-008 확정 후)
+ *       원격 설정(GET /app-configs, PUT /app-configs/{key})
+ * 남은 것: 대시보드, 수집 후보, 공지·푸시, 지오코딩(D-008 확정 후)
  */
 export default async function adminRoutes(app: FastifyInstance) {
   await app.register(cookie);
@@ -286,6 +291,33 @@ export default async function adminRoutes(app: FastifyInstance) {
         memo: request.body.action,
       };
       return resolveReports(app.db, request.admin!.id, request.body);
+    },
+  );
+
+  // ---- 원격 설정 (7.7) ----
+  r.get(
+    '/app-configs',
+    { ...readers, schema: { response: { 200: z.array(AdminAppConfig) } } },
+    async () => listAppConfigs(app.db),
+  );
+
+  r.put(
+    '/app-configs/:key',
+    {
+      ...owner,
+      schema: {
+        params: z.object({ key: AppConfigKey }),
+        body: AdminAppConfigPutReq,
+        response: { 200: AdminAppConfig },
+      },
+    },
+    async (request) => {
+      request.audit = {
+        targetType: 'app_config',
+        targetId: request.params.key,
+        memo: JSON.stringify(request.body.value),
+      };
+      return putAppConfig(app.db, request.admin!.id, request.params.key, request.body.value);
     },
   );
 }
