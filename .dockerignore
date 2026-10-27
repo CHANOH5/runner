@@ -1,0 +1,20 @@
+# Docker 빌드 컨텍스트에서 뺄 것 (server/Dockerfile, admin/Dockerfile 모두 저장소 루트에서 빌드)
+**/node_modules
+**/dist
+**/.next
+**/.expo
+**/cdk.out
+**/coverage
+.git
+.github
+.claude
+.env
+.env.*
+!.env.example
+docs
+# 다른 워크스페이스 패키지는 매니페스트만 (pnpm install --frozen-lockfile에 필요)
+app/*
+!app/package.json
+infra/*
+!infra/package.json
+*.log
