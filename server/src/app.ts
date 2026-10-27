@@ -22,6 +22,13 @@ import { registerAppVersionCheck } from './plugins/app-version.js';
 import { authPlugin } from './plugins/auth.js';
 import { registerErrorHandler } from './plugins/error-handler.js';
 
+function envCipher(config: Config): TokenCipher | null {
+  if (config.tokenKey?.kind === 'kms') {
+    throw new Error('KMS token key must be loaded before buildApp (loadTokenCipher)');
+  }
+  return config.tokenKey ? createTokenCipher(config.tokenKey.keyBase64) : null;
+}
+
 declare module 'fastify' {
   interface FastifyInstance {
     config: Config;
@@ -40,6 +47,11 @@ export type AppDeps = {
   redis: Redis;
   /** 테스트에서 로그를 끄거나 바꿀 때 */
   logger?: FastifyServerOptions['logger'];
+  /**
+   * 저장 암호기. 운영(KMS)은 시작할 때 loadTokenCipher로 먼저 만들어 넘긴다.
+   * 없으면 env 키(TOKEN_ENC_KEY)로 만든다 (로컬·테스트)
+   */
+  cipher?: TokenCipher | null;
   /** 소셜 verifier 교체 (테스트는 가짜를 넣는다). 없으면 config로 실제 verifier를 만든다 */
   verifiers?: SocialVerifiers;
   /** 원격 설정(최소 앱 버전) 캐시 시간. 기본 30초, 테스트 0 */
@@ -105,10 +117,7 @@ export async function buildApp(deps: AppDeps) {
       },
     },
   );
-  app.decorate(
-    'cipher',
-    deps.config.tokenEncKey ? createTokenCipher(deps.config.tokenEncKey) : null,
-  );
+  app.decorate('cipher', deps.cipher !== undefined ? deps.cipher : envCipher(deps.config));
 
   app.setValidatorCompiler(validatorCompiler);
   app.setSerializerCompiler(serializerCompiler);

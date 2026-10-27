@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { TokenKeySource } from '../lib/token-key.js';
 
 /** PEM의 줄바꿈을 .env 한 줄(\n)로 쓸 수 있게 한다 */
 const pem = z
@@ -22,7 +23,7 @@ export const Env = DatabaseEnv.extend({
   JWT_PUBLIC_KEY: z.preprocess(emptyToUndefined, pem.optional()),
   /** access token(ES256) 발급 개인키. 없으면 로그인·가입·토큰 회전이 500 (운영은 Secrets Manager) */
   JWT_PRIVATE_KEY: z.preprocess(emptyToUndefined, pem.optional()),
-  /** Apple refresh token 등 저장 암호화 키 (AES-256-GCM, base64 32바이트). 운영은 KMS로 교체 예정 */
+  /** Apple refresh token·관리자 TOTP 비밀키 저장 암호화 키 (AES-256-GCM, base64 32바이트). 로컬·테스트 전용 — 운영은 거부 */
   TOKEN_ENC_KEY: z.preprocess(
     emptyToUndefined,
     z
@@ -30,6 +31,13 @@ export const Env = DatabaseEnv.extend({
       .refine((v) => Buffer.from(v, 'base64').length === 32, '32 bytes')
       .optional(),
   ),
+  /**
+   * 운영: KMS로 암호화된 데이터 키 (`aws kms generate-data-key-without-plaintext`의 CiphertextBlob, base64).
+   * 시작할 때 KMS Decrypt로 한 번 푼다 (lib/token-key.ts, tech/07). 암호화 컨텍스트 app=berun, purpose=token-enc
+   */
+  TOKEN_ENC_KEY_KMS_CIPHERTEXT: z.preprocess(emptyToUndefined, z.base64().optional()),
+  /** KMS 키 id·별칭 (선택. 대칭 키 Decrypt는 암호문에 키 정보가 있어 없어도 된다) */
+  TOKEN_ENC_KMS_KEY_ID: z.preprocess(emptyToUndefined, z.string().optional()),
   /** 소셜 로그인 (값이 없으면 그 provider는 비활성 → 로그인 시 500) */
   KAKAO_APP_ID: z.preprocess(emptyToUndefined, z.string().optional()),
   /** 쉼표로 구분한 Google OAuth 클라이언트 id (iOS·Android·웹) */
@@ -71,7 +79,8 @@ export type Config = {
   redisUrl: string;
   jwtPublicKey: string | undefined;
   jwtPrivateKey: string | undefined;
-  tokenEncKey: string | undefined;
+  /** 저장 암호화 키 출처. 로컬·테스트 env, 운영 kms (lib/token-key.ts) */
+  tokenKey: TokenKeySource | null;
   social: SocialConfig;
   push: { dryRun: boolean; expoAccessToken: string | undefined; ratePerSec: number };
   unlink: { dryRun: boolean; kakaoAdminKey: string | undefined };
@@ -83,8 +92,24 @@ export class ConfigError extends Error {
   override name = 'ConfigError';
 }
 
+/**
+ * 운영(ECS)은 RDS 비밀(Secrets Manager)의 필드를 DB_USER·DB_PASSWORD로, 주소를 DB_HOST·DB_PORT·DB_NAME으로 받는다.
+ * 비밀번호가 든 URL을 평문 환경 변수로 두지 않기 위해서다 (infra app-stack). DATABASE_URL이 있으면 그것을 쓴다.
+ * RDS는 rds.force_ssl=1이라 sslmode=require.
+ */
+function withDatabaseUrl(source: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  if (source.DATABASE_URL) return source;
+  const { DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD } = source;
+  if (!DB_HOST || !DB_NAME || !DB_USER || !DB_PASSWORD) return source;
+  const auth = `${encodeURIComponent(DB_USER)}:${encodeURIComponent(DB_PASSWORD)}`;
+  return {
+    ...source,
+    DATABASE_URL: `postgres://${auth}@${DB_HOST}:${DB_PORT || '5432'}/${encodeURIComponent(DB_NAME)}?sslmode=require`,
+  };
+}
+
 function parse<T extends z.ZodType>(schema: T, source: NodeJS.ProcessEnv): z.output<T> {
-  const result = schema.safeParse(source);
+  const result = schema.safeParse(withDatabaseUrl(source));
   if (!result.success) {
     // 값은 출력하지 않는다 (비밀값 노출 방지)
     const fields = result.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join(', ');
@@ -98,6 +123,21 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): Config {
   if (env.DEV_LOGIN === 'true' && env.NODE_ENV === 'production') {
     throw new ConfigError('환경 변수 검증 실패 — DEV_LOGIN: 운영(production)에서는 켤 수 없다');
   }
+  if (env.TOKEN_ENC_KEY && env.TOKEN_ENC_KEY_KMS_CIPHERTEXT) {
+    throw new ConfigError(
+      '환경 변수 검증 실패 — TOKEN_ENC_KEY와 TOKEN_ENC_KEY_KMS_CIPHERTEXT 중 하나만 쓴다',
+    );
+  }
+  if (env.NODE_ENV === 'production') {
+    if (env.TOKEN_ENC_KEY) {
+      throw new ConfigError(
+        '환경 변수 검증 실패 — TOKEN_ENC_KEY: 운영(production)에서는 평문 키를 쓸 수 없다 (KMS 사용)',
+      );
+    }
+    if (!env.TOKEN_ENC_KEY_KMS_CIPHERTEXT) {
+      throw new ConfigError('환경 변수 검증 실패 — TOKEN_ENC_KEY_KMS_CIPHERTEXT: 운영 필수');
+    }
+  }
   return {
     env: env.NODE_ENV,
     host: env.HOST,
@@ -107,7 +147,15 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): Config {
     redisUrl: env.REDIS_URL,
     jwtPublicKey: env.JWT_PUBLIC_KEY,
     jwtPrivateKey: env.JWT_PRIVATE_KEY,
-    tokenEncKey: env.TOKEN_ENC_KEY,
+    tokenKey: env.TOKEN_ENC_KEY_KMS_CIPHERTEXT
+      ? {
+          kind: 'kms',
+          ciphertextBase64: env.TOKEN_ENC_KEY_KMS_CIPHERTEXT,
+          keyId: env.TOKEN_ENC_KMS_KEY_ID,
+        }
+      : env.TOKEN_ENC_KEY
+        ? { kind: 'env', keyBase64: env.TOKEN_ENC_KEY }
+        : null,
     devLogin: env.DEV_LOGIN === 'true',
     unlink: {
       dryRun: env.UNLINK_DRY_RUN ? env.UNLINK_DRY_RUN === 'true' : env.NODE_ENV !== 'production',
