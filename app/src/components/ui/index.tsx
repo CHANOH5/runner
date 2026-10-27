@@ -858,13 +858,13 @@ export function Dialog({
 /* ---------- 토스트 ---------- */
 
 export function ToastHost() {
-  const { message, seq, hide } = useToast();
+  const { message, action, duration, seq, hide } = useToast();
   const insets = useSafeAreaInsets();
   useEffect(() => {
     if (!message) return;
-    const t = setTimeout(hide, 2600);
+    const t = setTimeout(hide, duration);
     return () => clearTimeout(t);
-  }, [message, seq, hide]);
+  }, [message, seq, duration, hide]);
   const style = useMemo<ViewStyle>(
     () => ({
       position: 'absolute',
@@ -877,7 +877,7 @@ export function ToastHost() {
   );
   if (!message) return null;
   return (
-    <View pointerEvents="none" style={style}>
+    <View pointerEvents="box-none" style={style}>
       <View
         accessibilityLiveRegion="polite"
         style={{
@@ -886,11 +886,29 @@ export function ToastHost() {
           paddingHorizontal: 16,
           paddingVertical: 12,
           maxWidth: 480,
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: 16,
         }}
       >
         <Text testID="toast" style={{ color: '#fff', fontSize: 14 }}>
           {message}
         </Text>
+        {action ? (
+          <Pressable
+            testID="toast-action"
+            accessibilityRole="button"
+            hitSlop={8}
+            onPress={() => {
+              hide();
+              action.onPress();
+            }}
+          >
+            <Text style={{ color: '#FDBA74', fontSize: 14, fontWeight: '700' }}>
+              {action.label}
+            </Text>
+          </Pressable>
+        ) : null}
       </View>
     </View>
   );

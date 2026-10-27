@@ -11,10 +11,10 @@ import { useConfirm } from './useConfirm';
  * 관심 대회 토글 (F-013, PRD 4.8): 낙관적 업데이트 → 실패하면 되돌리고 토스트.
  * 참가 예정인 대회의 관심을 끄려면 확인. 알림 권한 미결정이면 처음 켤 때 권한 안내 시트 1회.
  */
-export function useInterest(race: {
-  id: string;
-  my: { interested: boolean; registered: boolean };
-}) {
+export function useInterest(
+  race: { id: string; my: { interested: boolean; registered: boolean } },
+  opts: { onTurnedOff?: () => void } = {},
+) {
   const qc = useQueryClient();
   const [interested, setInterested] = useState(race.my.interested);
   const [busy, setBusy] = useState(false);
@@ -52,6 +52,7 @@ export function useInterest(race: {
         if (await shouldShowPushSheet()) setPushSheet(true);
       } else {
         await api.interestOff(race.id);
+        opts.onTurnedOff?.();
       }
       refresh();
     } catch (e) {

@@ -1,7 +1,8 @@
 import type { DistanceCategory, RunKind } from '@berun/shared';
 import { View } from 'react-native';
 import type { RecordFormErrors, RecordFormState } from '../features/recordForm';
-import { addDaysKst, CATEGORY_LABELS } from '../lib/format';
+import { CATEGORY_LABELS } from '../lib/format';
+import { DateField } from './DateField';
 import { Chip, DurationInput, Field, Input, Row, Segmented } from './ui';
 
 const CATEGORIES: DistanceCategory[] = ['5k', '10k', 'half', 'full', 'other'];
@@ -61,21 +62,13 @@ export function RecordForm({
         />
       </Field>
       <Field label="날짜" error={err('runDate')}>
-        <Input
+        <DateField
           testID={`${testID}-date`}
           value={value.runDate}
-          onChangeText={(t) => onChange({ ...value, runDate: t.slice(0, 10) })}
-          placeholder="YYYY-MM-DD"
-          maxLength={10}
+          onChange={(runDate) => onChange({ ...value, runDate })}
+          today={today}
           invalid={!!err('runDate')}
         />
-        <Row>
-          <Chip label="오늘" onPress={() => onChange({ ...value, runDate: today })} />
-          <Chip
-            label="어제"
-            onPress={() => onChange({ ...value, runDate: addDaysKst(today, -1) })}
-          />
-        </Row>
       </Field>
       <Field label="구분">
         <Segmented<RunKind>

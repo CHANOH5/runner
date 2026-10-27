@@ -38,12 +38,15 @@ export function RaceCard({
   muted,
   extra,
   showHeart = true,
+  onInterestOff,
 }: {
   race: RaceSummary;
   onPress: () => void;
   muted?: boolean;
   extra?: React.ReactNode;
   showHeart?: boolean;
+  /** 하트로 관심을 끈 뒤 (S-061 관심 탭: 카드 빼기 + [되돌리기]) */
+  onInterestOff?: () => void;
 }) {
   const c = useTheme();
   const dDay = formatDDay(cardDDay(race.dDay));
@@ -79,15 +82,15 @@ export function RaceCard({
             ))}
           </Row>
         </Pressable>
-        {showHeart ? <CardHeart race={race} /> : null}
+        {showHeart ? <CardHeart race={race} onInterestOff={onInterestOff} /> : null}
       </Row>
       {extra}
     </Card>
   );
 }
 
-function CardHeart({ race }: { race: RaceSummary }) {
-  const { interested, toggle, elements } = useInterest(race);
+function CardHeart({ race, onInterestOff }: { race: RaceSummary; onInterestOff?: () => void }) {
+  const { interested, toggle, elements } = useInterest(race, { onTurnedOff: onInterestOff });
   return (
     <>
       <HeartButton on={interested} onPress={() => void toggle()} testID={`heart-${race.id}`} />

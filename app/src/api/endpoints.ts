@@ -54,6 +54,20 @@ export type RaceFilters = {
   hideCancelled?: boolean;
 };
 
+/**
+ * GET /app-config + 처리방침 주소 (PRD v1.11 4.2). `privacyPolicyUrl`은 T-026에서 공유 스키마에 들어온다 —
+ * 그 전 서버는 이 필드를 주지 않으므로 앱에서 선택적으로 읽고, 없거나 형식이 틀리면 null로 둔다.
+ * T-026 병합 후에는 공유 AppConfig를 그대로 쓰면 된다.
+ */
+export const AppConfigRes = AppConfig.extend({
+  privacyPolicyUrl: z
+    .url()
+    .nullable()
+    .optional()
+    .catch(null)
+    .transform((v) => v ?? null),
+});
+
 /** z.input을 쓰는 이유: 기본값이 있는 필드(confirmDuplicate 등)를 생략할 수 있게 */
 type In<T extends z.ZodType> = z.input<T>;
 
@@ -61,7 +75,7 @@ export function createEndpoints(client: ApiClient) {
   const r = client.request;
   return {
     // ---- 앱 설정 · 인증 (6.1, 6.2) ----
-    appConfig: () => r({ path: '/app-config', schema: AppConfig, auth: 'none' }),
+    appConfig: () => r({ path: '/app-config', schema: AppConfigRes, auth: 'none' }),
     socialLogin: (body: SocialLoginReq) =>
       r({ method: 'POST', path: '/auth/social', body, schema: SocialLoginRes, auth: 'none' }),
     terms: () => r({ path: '/terms/current', schema: TermsCurrent, auth: 'none' }),

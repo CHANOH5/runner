@@ -16,6 +16,7 @@ import {
   Skeleton,
   T,
 } from '../../components/ui';
+import { recommendedView } from '../../features/home';
 import { ENTRY_STATUS_LABEL, ENTRY_STATUS_TONE, showNotRegisteredHint } from '../../features/race';
 import {
   CATEGORY_LABELS,
@@ -26,7 +27,6 @@ import {
   formatMonthDay,
   formatPace,
   formatShortDateTime,
-  REGION_LABELS,
 } from '../../lib/format';
 import { useTheme } from '../../theme';
 
@@ -216,12 +216,17 @@ function Recommended() {
   if (q.isPending) return <Skeleton height={140} />;
   if (q.isError) return <SectionError onRetry={() => void q.refetch()} />;
   if (q.data.items.length === 0) return null;
-  const title = q.data.regionCode ? `${REGION_LABELS[q.data.regionCode]} 근처 대회` : '추천 대회';
+  const view = recommendedView(q.data);
   return (
-    <Section title={title}>
+    <Section title={view.title}>
+      {view.note ? (
+        <T variant="caption" muted testID="recommended-note">
+          {view.note}
+        </T>
+      ) : null}
       <ScrollView horizontal showsHorizontalScrollIndicator={false}>
         <Row gap={10} style={{ alignItems: 'stretch' }}>
-          {q.data.items.map((race) => (
+          {view.items.map((race) => (
             <View key={race.id} style={{ width: 260 }}>
               <RaceCard race={race} onPress={() => router.push(`/races/${race.id}`)} />
             </View>

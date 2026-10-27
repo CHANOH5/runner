@@ -43,6 +43,7 @@ src/
 
 - 웹 대체 구현은 같은 이름의 `.web.ts` 파일이다 (`secureStore.web.ts`, `push.web.ts`). Metro가 웹 번들에서 고른다.
 - 지도 SDK는 `components/map/` 밖에서 import하지 않는다 (tech/03 6장).
+- 날짜 입력(S-005·S-031)은 `components/DateField.tsx`(네이티브 달력 피커) / `DateField.web.tsx`(웹 미리보기 직접 입력) — PRD v1.11 4.4.
 
 ## 테스트
 
