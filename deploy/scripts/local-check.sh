@@ -34,7 +34,7 @@ UNLINK_DRY_RUN=true
 EOF
 
 dc() { docker compose -p "$PROJECT" --env-file "$WORK/.env" -f compose.prod.yml "$@"; }
-# shellcheck disable=SC2329 # trap으로 호출
+# shellcheck disable=SC2317,SC2329 # trap으로 호출 (shellcheck 0.9는 SC2317, 0.10+는 SC2329)
 cleanup() {
   if [[ ${KEEP:-} == 1 ]]; then
     echo "띄워 둠 — 지우기: docker compose -p $PROJECT --env-file $WORK/.env -f $DEPLOY_DIR/compose.prod.yml down -v"
