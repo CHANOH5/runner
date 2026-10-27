@@ -11,6 +11,7 @@ export default tseslint.config(
       '**/coverage/**',
       '**/node_modules/**',
       '**/.next/**',
+      '**/cdk.out/**',
       'admin/next-env.d.ts',
       'app/.expo/**',
       'app/expo-env.d.ts',

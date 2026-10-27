@@ -3,6 +3,7 @@ packages:
   - server
   - app
   - admin
+  - infra
   - packages/*
 
 onlyBuiltDependencies:

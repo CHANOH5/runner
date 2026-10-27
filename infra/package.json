@@ -1,0 +1,23 @@
+{
+  "name": "@berun/infra",
+  "version": "0.0.0",
+  "private": true,
+  "description": "AWS CDK — staging·prod 스택 (T-029, tech/07). synth만 하고 배포는 사용자가 직접",
+  "type": "module",
+  "scripts": {
+    "synth": "cdk synth --quiet",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "aws-cdk-lib": "^2.275.0",
+    "constructs": "^10.8.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "aws-cdk": "^2.1146.1",
+    "tsx": "^4.23.15",
+    "typescript": "~5.9.3",
+    "vitest": "^4.1.12"
+  }
+}

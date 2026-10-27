@@ -9,3 +9,5 @@ coverage/
 .idea/
 .next/
 .claude/
+cdk.out/
+infra/cdk.context.json
