@@ -55,6 +55,7 @@ import { usePreviewPrediction } from '../../../stores/preview';
 import { toast } from '../../../stores/toast';
 import { useTheme } from '../../../theme';
 import { goBack } from '../../../lib/nav';
+import { analytics } from '../../../lib/analyticsClient';
 
 type GoalMode = 'prediction' | 'manual' | 'none';
 const HIDE_NOTICE_KEY = 'device.hideOfficialRegistrationNotice';
@@ -256,6 +257,23 @@ function RegisterForm({
         if (entry === 'registered') await savePromptSettled(race.id);
       }
       setDirty(false);
+      analytics.track('registration_saved', {
+        race_id: race.id,
+        race_event_id: reg.raceEventId,
+        has_goal: reg.goalTimeSec !== null,
+        goal_source: reg.goalSource,
+        is_edit: !!existing,
+        entry_status: reg.entryStatus,
+        source: fromReturnPrompt ? 'return_prompt' : 'race_detail',
+      });
+      if (existing && entry !== existing.entryStatus) {
+        analytics.track('entry_status_changed', {
+          race_id: race.id,
+          from: existing.entryStatus,
+          to: entry,
+          source: 'form',
+        });
+      }
       afterSave(reg);
     } catch (e) {
       if (isApiError(e) && e.code === 'GOAL_OUT_OF_RANGE') setGoalError(errorMessage(e));
@@ -284,6 +302,7 @@ function RegisterForm({
     if (!ok) return;
     try {
       await api.deleteRegistration(existing.id);
+      analytics.track('registration_cancelled', { race_id: race.id });
       invalidateRegistrationQueries(qc, race.id);
       goBack();
       toast('참가 예정을 해제했어요');

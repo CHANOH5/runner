@@ -8,6 +8,7 @@ import { Button, EmptyState, ErrorState, LinkText, Row, SkeletonCards, T } from 
 import { deepLinkToPath, notificationIcon } from '../features/deepLink';
 import { formatRelative } from '../lib/format';
 import { useTheme } from '../theme';
+import { analytics } from '../lib/analyticsClient';
 
 /** S-011 알림 목록 (PRD 6.8) */
 export default function Notifications() {
@@ -28,6 +29,10 @@ export default function Notifications() {
   };
 
   const tap = async (n: AppNotification) => {
+    analytics.track('notification_opened', {
+      kind: n.kind,
+      race_id: /^berun:\/\/races\/([\w-]+)/.exec(n.deepLink)?.[1] ?? null,
+    });
     if (!n.readAt) {
       await api.markRead({ ids: [n.id] }).catch(() => undefined);
       refreshCounts();

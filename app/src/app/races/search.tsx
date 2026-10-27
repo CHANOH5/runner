@@ -19,6 +19,7 @@ import {
 } from '../../components/ui';
 import { kv } from '../../lib/kv';
 import { useTheme } from '../../theme';
+import { analytics } from '../../lib/analyticsClient';
 
 const RECENT_KEY = 'user.recentSearches';
 const MAX_RECENT = 10;
@@ -52,6 +53,14 @@ export default function RaceSearch() {
     enabled: query.length >= 1,
   });
   const items = result.data?.items ?? [];
+  useEffect(() => {
+    if (result.data) {
+      analytics.track('race_searched', {
+        query_length: [...query].length,
+        result_count: result.data.items.length,
+      });
+    }
+  }, [result.data, query]);
   const firstEnded = items.findIndex((r) => r.registrationState === 'ended');
 
   return (

@@ -6,6 +6,7 @@ import { isApiError } from '../api/client';
 import { errorMessage } from '../api/messages';
 import { Button, Card, Field, Input, Segmented, T } from '../components/ui';
 import { handleLoginResult } from '../features/auth';
+import { analytics } from '../lib/analyticsClient';
 import { toast } from '../stores/toast';
 import { useTheme } from '../theme';
 
@@ -32,10 +33,16 @@ export default function Login() {
   const providers: Provider[] =
     Platform.OS === 'ios' ? ['kakao', 'apple', 'google'] : ['kakao', 'google'];
 
-  const login = async (key: string, run: () => ReturnType<typeof api.socialLogin>) => {
+  const login = async (
+    key: string,
+    provider: Provider,
+    run: () => ReturnType<typeof api.socialLogin>,
+  ) => {
     setBusy(key);
+    const startedAt = Date.now();
+    analytics.track('login_started', { provider, dev: key === 'dev' });
     try {
-      await handleLoginResult(await run());
+      await handleLoginResult(await run(), { provider, startedAt });
     } catch (e) {
       if (isApiError(e) && e.code === 'ACCOUNT_SUSPENDED') router.push('/suspended');
       else
@@ -113,7 +120,7 @@ export default function Login() {
             label="개발 계정으로 로그인"
             disabled={busy !== null || !/^[A-Za-z0-9_-]{1,40}$/.test(devName.trim())}
             loading={busy === 'dev'}
-            onPress={() => void login('dev', () => api.socialLogin(devBody()))}
+            onPress={() => void login('dev', devProvider, () => api.socialLogin(devBody()))}
           />
         </Card>
       ) : null}

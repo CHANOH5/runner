@@ -4,6 +4,7 @@ import { Button, Progress, Screen, T, TopBar } from '../../components/ui';
 import { registerDevice } from '../../features/auth';
 import { requestPushPermission } from '../../lib/push';
 import { toast } from '../../stores/toast';
+import { analytics } from '../../lib/analyticsClient';
 
 /** S-006 알림 권한 안내 (PRD 6.6) — 결과와 상관없이 S-010 */
 export default function OnboardingNotifications() {
@@ -25,7 +26,13 @@ export default function OnboardingNotifications() {
               label="알림 받기"
               onPress={() =>
                 void requestPushPermission()
-                  .then(() => registerDevice())
+                  .then((p) => {
+                    analytics.track('notification_permission_result', {
+                      granted: p === 'granted',
+                      source: 'onboarding',
+                    });
+                    return registerDevice();
+                  })
                   .finally(finish)
               }
             />

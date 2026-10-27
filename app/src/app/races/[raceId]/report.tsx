@@ -17,6 +17,7 @@ import {
 import { useConfirm } from '../../../components/useConfirm';
 import { toast } from '../../../stores/toast';
 import { goBack } from '../../../lib/nav';
+import { analytics } from '../../../lib/analyticsClient';
 
 const FIELDS = [
   ['date', '대회 일시'],
@@ -54,6 +55,7 @@ export default function Report() {
     setSaving(true);
     try {
       await api.report(raceId, { field, message: message.trim() });
+      analytics.track('race_report_submitted', { race_id: raceId, field });
       goBack();
       toast('제보해주셔서 감사해요. 확인 후 알려드릴게요');
     } catch (e) {

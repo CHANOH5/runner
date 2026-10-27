@@ -1,6 +1,7 @@
 import { QueryClient } from '@tanstack/react-query';
 import { Platform } from 'react-native';
 import { APP_VERSION, getDeviceId, PLATFORM } from '../lib/device';
+import { analytics } from '../lib/analyticsClient';
 import { kv } from '../lib/kv';
 import { useSession } from '../stores/session';
 import { toast } from '../stores/toast';
@@ -39,6 +40,7 @@ export const queryClient = new QueryClient({
 
 /** 로그아웃·탈퇴·인증 만료 공통 정리: 토큰·캐시·사용자 기기 데이터 삭제 */
 export async function clearLocalSession() {
+  analytics.reset();
   await tokenStore.clear();
   queryClient.clear();
   await kv.clearUserData();

@@ -3,6 +3,8 @@ import { router } from 'expo-router';
 import { api, clearLocalSession, tokenStore } from '../api';
 import { kv } from '../lib/kv';
 import { deviceRegistration } from '../lib/push';
+import { analytics } from '../lib/analyticsClient';
+import { userIdFromAccessToken } from '../lib/analytics';
 import { useSession } from '../stores/session';
 
 /** 만 14세 미만 가입 중단 후 24시간 재시도 차단 (기기 플래그만, PRD 4.3) */
@@ -26,12 +28,18 @@ export async function registerDevice() {
 
 export async function startSession(tokens: TokenPair) {
   await tokenStore.save(tokens);
+  // 분석 식별은 내부 user_id만 (D-017)
+  const userId = userIdFromAccessToken(tokens.accessToken);
+  if (userId) analytics.identify(userId);
   useSession.getState().setStatus('signedIn');
   void registerDevice();
 }
 
 /** POST /auth/social 결과 처리 → 다음 화면 (PRD 4.1, 6.1) */
-export async function handleLoginResult(res: SocialLoginRes) {
+export async function handleLoginResult(
+  res: SocialLoginRes,
+  meta: { provider?: 'kakao' | 'apple' | 'google'; startedAt?: number } = {},
+) {
   const session = useSession.getState();
   if (res.result === 'signup_required') {
     if (await isUnderageBlocked()) {
@@ -44,6 +52,7 @@ export async function handleLoginResult(res: SocialLoginRes) {
       expiresAt: res.signupTokenExpiresAt,
       agreedTermIds: [],
       marketing: false,
+      ...meta,
     });
     router.push('/terms');
     return;

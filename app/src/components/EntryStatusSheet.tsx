@@ -8,6 +8,7 @@ import { savePromptSettled } from '../features/returnPrompt';
 import { toast } from '../stores/toast';
 import { Notice, RadioRow, Sheet } from './ui';
 import { useConfirm } from './useConfirm';
+import { analytics } from '../lib/analyticsClient';
 
 const STATUSES: EntryStatus[] = ['not_registered', 'registered', 'missed'];
 
@@ -53,6 +54,12 @@ export function EntryStatusSheet({
         entryStatusSource: source,
       });
       await savePromptSettled(target.raceId);
+      analytics.track('entry_status_changed', {
+        race_id: target.raceId,
+        from: target.entryStatus,
+        to: status,
+        source,
+      });
       toast('접수 상태를 바꿨어요');
       onClose();
       if (status === 'missed') {
@@ -63,6 +70,7 @@ export function EntryStatusSheet({
         });
         if (remove) {
           await api.deleteRegistration(target.registrationId);
+          analytics.track('registration_cancelled', { race_id: target.raceId });
           toast('참가 예정을 해제했어요');
         }
       }

@@ -1,5 +1,5 @@
 import type { Prediction, SplitRow, Splits } from '@berun/shared';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { View } from 'react-native';
 import {
   CONFIDENCE_BADGE,
@@ -20,6 +20,7 @@ import {
 } from '../lib/format';
 import { useTheme } from '../theme';
 import { Badge, Card, LinkText, Notice, Row, Section, Segmented, T } from './ui';
+import { analytics } from '../lib/analyticsClient';
 
 function SplitTable({ rows, startAt }: { rows: SplitRow[]; startAt: string | null }) {
   const c = useTheme();
@@ -102,7 +103,10 @@ export function PaceStrategy({
           { value: 'negative', label: '네거티브 스플릿' },
         ]}
         value={tab}
-        onChange={setTab}
+        onChange={(t) => {
+          setTab(t);
+          analytics.track('strategy_tab_changed', { strategy: t });
+        }}
       />
       <SplitTable rows={splits[tab]} startAt={startAt} />
       <T variant="caption" muted>
@@ -129,12 +133,23 @@ export function PredictionBody({
   p,
   timeLimitMin,
   onRepredict,
+  source,
 }: {
   p: Prediction;
   timeLimitMin: number | null;
   onRepredict?: () => void;
+  /** 분석 prediction_viewed.source (prediction · registration · preview) */
+  source: string;
 }) {
   const c = useTheme();
+  useEffect(() => {
+    analytics.track('prediction_viewed', {
+      target_distance_m: p.targetDistanceM,
+      confidence: p.confidence,
+      record_count: p.usedRecords.length,
+      source,
+    });
+  }, [p.id, p.targetDistanceM, p.confidence, p.usedRecords.length, source]);
   const [showRecords, setShowRecords] = useState(false);
   const badge = CONFIDENCE_BADGE[p.confidence];
   return (

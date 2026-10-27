@@ -28,6 +28,7 @@ import { withMonthHeaders } from '../../features/raceList';
 import { filterChips, filtersToQuery, useRaceFilters } from '../../features/raceFilters';
 import { formatDate, formatMonthHeader, todayKst } from '../../lib/format';
 import { useTheme } from '../../theme';
+import { analytics } from '../../lib/analyticsClient';
 
 function SearchBar() {
   const router = useRouter();
@@ -303,10 +304,14 @@ function RaceCalendar() {
 /** S-020 대회 캘린더/리스트 (PRD 6.9) */
 export default function Races() {
   const c = useTheme();
-  const { view, setView, load, loaded } = useRaceFilters();
+  const { view, setView, load, loaded, filters } = useRaceFilters();
   useEffect(() => {
     void load();
   }, [load]);
+  const filterCount = filterChips(filters).length;
+  useEffect(() => {
+    if (loaded) analytics.track('race_list_viewed', { view, filter_count: filterCount });
+  }, [loaded, view, filterCount]);
   return (
     <View style={{ flex: 1, backgroundColor: c.bg, gap: 10 }}>
       <SearchBar />

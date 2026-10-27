@@ -13,6 +13,7 @@ import { todayKst } from '../../lib/format';
 import { toast } from '../../stores/toast';
 import { useTheme } from '../../theme';
 import { goBack } from '../../lib/nav';
+import { analytics } from '../../lib/analyticsClient';
 
 /** S-031 기록 추가/수정 (PRD 4.4, 6.15). 수정할 기록은 S-030 목록 캐시에서 찾는다 (단건 조회 API 없음) */
 export default function RecordEdit() {
@@ -69,6 +70,12 @@ function Editor({ record }: { record: RunRecord | null }) {
         record?.id,
       );
       if (!saved) return;
+      analytics.track('record_saved', {
+        distance_category: saved.category,
+        kind: saved.kind,
+        is_edit: !!record,
+        source: 'records',
+      });
       refresh();
       goBack();
       toast('저장했어요');
