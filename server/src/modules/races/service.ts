@@ -1,9 +1,19 @@
-import type { FeeBucket, RaceDetail, RaceListQuery, RaceSummary } from '@berun/shared';
+import {
+  RACE_CALENDAR_MONTHS_AHEAD,
+  RACE_CALENDAR_MONTHS_BACK,
+  type FeeBucket,
+  type RaceCalendar,
+  type RaceCalendarQuery,
+  type RaceCountQuery,
+  type RaceDetail,
+  type RaceListQuery,
+  type RaceSummary,
+} from '@berun/shared';
 import { and, eq, gte, inArray, lte, ne, or, sql, type SQL } from 'drizzle-orm';
 import type { Db } from '../../db/client.js';
 import { raceEvents, races, raceSources } from '../../db/schema/index.js';
 import { compareKeys, paginate } from '../../lib/cursor.js';
-import { AppError, notFound } from '../../lib/errors.js';
+import { AppError, notFound, validationFailed } from '../../lib/errors.js';
 import { kstDate, toKstIso } from '../../lib/time.js';
 import {
   loadRaceContext,
@@ -26,7 +36,10 @@ const FEE_RANGES: Record<FeeBucket, [number, number | null]> = {
 const normalize = (col: SQL | typeof races.name) =>
   sql`regexp_replace(lower(coalesce(${col}, '')), '\\s', '', 'g')`;
 
-function buildWhere(q: RaceListQuery, today: string): SQL | undefined {
+/** 목록·개수·달력 공통 필터 (cursor·limit 제외) */
+type RaceFilter = RaceCountQuery;
+
+function buildWhere(q: RaceFilter, today: string): SQL | undefined {
   const conds: (SQL | undefined)[] = [eq(races.publishStatus, 'published')];
 
   if (q.date) conds.push(eq(races.raceDate, q.date));
@@ -69,29 +82,38 @@ function buildWhere(q: RaceListQuery, today: string): SQL | undefined {
 const dayNumber = (date: string) => Date.parse(`${date}T00:00:00Z`) / 86_400_000;
 
 /**
- * GET /races (tech/06 6.4). SQL로 기본 조건을 거른 뒤, 접수 상태(계산값) 필터·정렬·커서는 메모리에서 한다.
+ * 필터에 맞는 게시 대회 (목록·개수·달력 공통). SQL로 기본 조건을 거른 뒤 접수 상태(계산값)는 메모리에서 거른다.
  * 유효 접수 기간 계산을 한 함수(registration-window.ts)로 유지하기 위해서다. 게시 대회 수백 개 규모 기준.
  */
+async function filterRaces(
+  db: Db,
+  userId: string,
+  q: RaceFilter,
+  now: Date,
+): Promise<RaceSummary[]> {
+  const rows = await db
+    .select()
+    .from(races)
+    .where(buildWhere(q, kstDate(now)));
+  const ctx = await loadRaceContext(
+    db,
+    rows.map((r) => r.id),
+    userId,
+  );
+  const items = rows.map((r) => toRaceSummary(r, ctx, now));
+  if (!q.registrationState?.length) return items;
+  const wanted = new Set<string>(q.registrationState);
+  return items.filter((s) => wanted.has(s.registrationState));
+}
+
+/** GET /races (tech/06 6.4). 정렬·커서는 메모리에서 */
 export async function listRaces(
   db: Db,
   userId: string,
   q: RaceListQuery,
   now = new Date(),
 ): Promise<{ items: RaceSummary[]; nextCursor: string | null }> {
-  const today = kstDate(now);
-  const rows = await db.select().from(races).where(buildWhere(q, today));
-  const ctx = await loadRaceContext(
-    db,
-    rows.map((r) => r.id),
-    userId,
-  );
-
-  let items = rows.map((r) => toRaceSummary(r, ctx, now));
-  if (q.registrationState?.length) {
-    const wanted = new Set<string>(q.registrationState);
-    items = items.filter((s) => wanted.has(s.registrationState));
-  }
-
+  const items = await filterRaces(db, userId, q, now);
   // 기본: 대회일 → 대회명 → id. 검색: 예정 대회 전부 → 지난 대회(최근 순)
   const keyOf = (s: RaceSummary) => {
     const past = q.q && s.registrationState === 'ended' ? 1 : 0;
@@ -100,6 +122,54 @@ export async function listRaces(
   };
   items.sort((a, b) => compareKeys(keyOf(a), keyOf(b)));
   return paginate(items, keyOf, q.cursor, q.limit);
+}
+
+/** GET /races/count — 목록과 같은 필터의 결과 수 */
+export async function countRaces(
+  db: Db,
+  userId: string,
+  q: RaceCountQuery,
+  now = new Date(),
+): Promise<{ count: number }> {
+  return { count: (await filterRaces(db, userId, q, now)).length };
+}
+
+/** "2026-11" + n개월 */
+function addMonths(month: string, n: number): string {
+  const [y, m] = month.split('-').map(Number) as [number, number];
+  const d = new Date(Date.UTC(y, m - 1 + n, 1));
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+}
+
+/**
+ * GET /races/calendar — 그 달(KST) 날짜별 대회 수. 목록과 같은 필터를 쓰므로 기본은 오늘 이후만 세고,
+ * 지난 날짜까지 세려면 includeEnded=true (목록에서 그날을 눌렀을 때와 같은 결과가 나오도록).
+ */
+export async function raceCalendar(
+  db: Db,
+  userId: string,
+  q: RaceCalendarQuery,
+  now = new Date(),
+): Promise<RaceCalendar> {
+  const thisMonth = kstDate(now).slice(0, 7);
+  if (
+    q.month < addMonths(thisMonth, -RACE_CALENDAR_MONTHS_BACK) ||
+    q.month > addMonths(thisMonth, RACE_CALENDAR_MONTHS_AHEAD)
+  ) {
+    throw validationFailed([{ path: 'month', code: 'out_of_range' }]);
+  }
+  // race_date는 KST 기준 날짜(date 컬럼)라 달의 첫날~마지막 날로 거르면 된다
+  const [y, m] = q.month.split('-').map(Number) as [number, number];
+  const lastDay = new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10);
+  const items = await filterRaces(db, userId, { ...q, from: `${q.month}-01`, to: lastDay }, now);
+  const counts = new Map<string, number>();
+  for (const s of items) counts.set(s.raceDate, (counts.get(s.raceDate) ?? 0) + 1);
+  return {
+    month: q.month,
+    days: [...counts.entries()]
+      .sort(([a], [b]) => (a < b ? -1 : 1))
+      .map(([date, count]) => ({ date, count })),
+  };
 }
 
 /** 앱 API에서 대회를 찾는다: 없음·초안 404, 숨김 410 (tech/06 6.4) */
