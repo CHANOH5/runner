@@ -4,6 +4,7 @@ import { AdminSessionInfo, type AdminMe } from '@berun/shared';
 import { usePathname, useRouter } from 'next/navigation';
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
 import { api, ApiError, setCsrfToken } from '@/lib/api';
+import { adminAnalytics } from '@/lib/analytics';
 
 type Session = { admin: AdminMe; logout: () => Promise<void> };
 const SessionContext = createContext<Session | null>(null);
@@ -26,6 +27,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       .then(({ csrfToken, ...me }) => {
         if (!alive) return;
         setCsrfToken(csrfToken);
+        adminAnalytics.identify(me.id);
         setAdmin(me);
       })
       .catch((err: unknown) => {
@@ -41,6 +43,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const logout = useCallback(async () => {
     await api('POST', '/auth/logout').catch(() => undefined);
     setCsrfToken(null);
+    adminAnalytics.reset();
     router.replace('/login');
   }, [router]);
 

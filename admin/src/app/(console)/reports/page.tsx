@@ -10,6 +10,7 @@ import { ErrorAlert, Toast } from '@/components/ui';
 import { api, qs } from '@/lib/api';
 import { number, REPORT_FIELD_LABELS, shortDateTime } from '@/lib/format';
 import { errorMessage } from '@/lib/messages';
+import { adminAnalytics } from '@/lib/analytics';
 
 type Page = z.infer<typeof AdminReportPage>;
 const TABS = [
@@ -61,6 +62,7 @@ export default function ReportsPage() {
         },
         schema: Resolved,
       });
+      adminAnalytics.track('admin_reports_resolved', { count: res.resolved, action });
       setToast(
         `${res.resolved}건을 ${action === 'applied' ? '반영' : '반려'} 처리했어요 · 제보자에게 각각 알림`,
       );

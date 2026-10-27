@@ -56,6 +56,9 @@ const FIELD_CODE_MESSAGES: Record<string, string> = {
   taken: '이미 사용 중이에요',
   last_owner: '마지막 owner는 바꿀 수 없어요',
   self: '자기 자신은 비활성화할 수 없어요',
+  past: '지난 시각이에요. 미래 시각으로 예약해주세요',
+  night_not_allowed: '마케팅은 08:00~20:59에만 보낼 수 있어요',
+  not_found: '찾을 수 없어요',
 };
 export const fieldMessage = (code: string) => FIELD_CODE_MESSAGES[code] ?? '값을 확인해주세요';
 
@@ -76,6 +79,11 @@ const FIELD_LABELS: Record<string, string> = {
   raceType: '대회 종류',
   events: '종목',
   'if-match': '수정 기준 시각',
+  title: '제목',
+  body: '본문',
+  scheduledAt: '발송 시각',
+  'link.raceId': '이동할 대회',
+  userId: '테스트 사용자 ID',
 };
 export function fieldLabel(path: string): string {
   if (FIELD_LABELS[path]) return FIELD_LABELS[path];

@@ -4,6 +4,7 @@ import { AdminLoginRes, AdminMfaRes } from '@berun/shared';
 import { useState, type FormEvent } from 'react';
 import { api, setCsrfToken } from '@/lib/api';
 import { loginErrorMessage } from '@/lib/messages';
+import { adminAnalytics } from '@/lib/analytics';
 
 /**
  * A-001: 1단계 이메일 + 비밀번호 → 2단계 TOTP 6자리 → 세션 쿠키 (PRD 8.2, tech/06 2.3).
@@ -44,6 +45,8 @@ export function LoginForm({ onDone }: { onDone: () => void }) {
     try {
       const res = await api('POST', '/auth/mfa', { body: { mfaToken, totp }, schema: AdminMfaRes });
       setCsrfToken(res.csrfToken);
+      adminAnalytics.identify(res.admin.id);
+      adminAnalytics.track('admin_logged_in', { role: res.admin.role });
       onDone();
     } catch (err) {
       setError(loginErrorMessage(err));
