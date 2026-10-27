@@ -187,8 +187,8 @@ app/src/components/map/
 - (T-020, PRD v1.7) 대회명 줄이기 = 상한 − 고정 문구 길이, N-06a·b 제목 "{대회명} 대회가 …", 유효 구간 N-04 D-7 당일 23:59·N-06 대회일까지, 늦어서 보내지 않은 건은 `last_error = expired`·`SendResult.expired`로 실패·취소와 따로 집계, **휴면 계정도 N-06 대상**(P-RET-03 예외). 묶음 N-02는 오픈 시각 미정 대회가 섞이면 "오늘 접수가 시작되는 대회 n개".
 - (T-020) 파기 배치 `retention` 작업: 매일 04:00 KST(BullMQ cron), 알림 생성 90일·끝난 예약 행 90일 삭제 → `deletion_jobs`. N-07 제보 결과는 관리자 처리 시 앱 내 알림 행으로 바로 남긴다.
 - 관리자 대회 저장 → `RaceUpdateSink` → BullMQ `race-updated` (API 서버 `server.ts`가 큐에 넣는다).
-- 남은 것: Expo receipt 확인(15분 뒤), N-08 공지·마케팅.
-- 공지·마케팅(N-08, `notices`): owner 승인 → 예약 시각에 대상(전체 / 마케팅 동의자) 조회 후 같은 발송 경로. 마케팅은 08:00~20:59만 (DB CHECK + 발송 시 재확인).
+- 남은 것: Expo receipt 확인(15분 뒤).
+- 공지·마케팅(N-08, `notices`, **T-030 구현** `modules/notifications/notices.ts`·`modules/admin/notices-service.ts`): 작성(draft) → owner 승인(approved) → 워커 tick(`runTick` 안 `materializeNotices`)이 게시 시각(예약 시각 또는 승인 시각)이 된 공지를 `sent`로 바꾸고 대상자(공지 = 활성 전체, 마케팅 = 활성 + 마케팅 동의)마다 `notifications` 행(kind `notice`·`marketing`, `notice_id`, 문구·딥링크 `berun://notices/{id}`는 payload)을 만든다. 푸시 동반이면 `scheduled`로 넣어 **기존 `sendDue` 경로**(임대·배치·재시도·무효 토큰·`sent_at`)가 보내고, 아니면 앱 내만(`sent`, `last_error = in_app_only`). 묶음 없음. 발송 직전 확인(`prepareNoticeNotification`): 공지가 아직 `sent`(내리지 않음), 마케팅 야간 아님, 사용자 활성·동의 유지. 마케팅은 야간이면 게시 자체를 미룬다 (DB CHECK + 저장·승인·게시·발송 때 재확인). 내리기 → 미발송 푸시 `cancelled`(`withdrawn`). 통계는 알림 행 집계(테스트 발송 제외).
 
 ## 8. 가입 · 탈퇴의 외부 연동 (F-001, F-072)
 
@@ -291,7 +291,7 @@ server/src/
 admin/src/
 ├── app/login/            A-001 (비밀번호 → TOTP)
 ├── app/(console)/        세션 확인 레이아웃 + 화면: dashboard(A-002), races·races/new·races/[id](A-003),
-│                         reports·reports/[id](A-004), notices(A-008 자리)
+│                         reports·reports/[id](A-004), notices·notices/new·notices/[id](A-008: 목록·작성·미리보기·예약·테스트·승인·발송 결과·내리기)
 ├── components/           세션(SessionProvider), 대회 폼(race-form + race-form-model), 반려 모달, 공통 UI
 └── lib/                  api(같은 출처 fetch·CSRF·에러), messages(에러 코드 → 한국어), format(빠른 입력 해석·라벨)
 ```
@@ -341,6 +341,7 @@ app/src/
 - 2026-10-23: T-022 — 소셜 연결 해제 워커 구현 표(8장)
 - 2026-10-23: T-023 — 휴면 처리(8-1), D-020 연결 해제 실패 기록 1년 파기
 - 2026-10-23: T-024 — 관리자 웹 구조(9-0-1): 같은 출처 프록시, CSRF 복구, 클라이언트 화면
+- 2026-10-27: T-030 — 7장 N-08 공지·마케팅 발송 구현, 9-0-1 관리자 웹 A-008
 - 2026-10-27: T-028 — 9-0-2: 서버 API 3개 연결(대체 코드 삭제), 캘린더 지난 날짜 includeEnded 규칙, 공유 AppConfig 사용
 - 2026-10-27: T-027 — PRD v1.11 앱 반영 메모(9-0-2): 추천 대회 정렬·제목, 관심 해제 되돌리기, 처리방침 원격 설정, 네이티브 달력 피커
 - 2026-10-23: T-025 — 모바일 앱 구조(9-0-2): 토큰·게이트·기기 저장·웹 확인 프록시·API 대체, 지도 래퍼 현재 상태(6장), 개발 전용 로그인(8장)

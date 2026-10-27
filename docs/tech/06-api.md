@@ -996,6 +996,14 @@ const NoticeInput = z.object({
 });
 ```
 
+> **구현 (T-030)**: 위 표 전부 + `GET /notices/{id}`(OPV, 편집용 상세). 응답 `AdminNotice`에 `displayTitle`(마케팅 "(광고) " 포함)·`publishedAt`·`stats { recipients, pushed, failed, inAppOnly, pending, opened }`(알림 행 집계, 테스트 발송 제외). 스키마는 `packages/shared/src/admin-notices.ts`.
+> - 저장 제목은 접두 없이(30자), 앱 상세·푸시·알림 목록에 낼 때 "(광고) "를 붙인다. 푸시·알림 목록 본문 = 앞 60자, 마케팅은 끝에 "수신 거부: 마이 > 설정 > 알림 설정"을 붙여 60자 안.
+> - 검증: 예약 `scheduledAt`은 미래(`past`), 마케팅은 08:00~20:59 KST(`night_not_allowed`, 400 fieldErrors), 대회 링크는 게시된 대회(`link.raceId` `not_found`). 승인 시에도 다시 본다(즉시 공지 + 마케팅 + 지금 야간이면 400).
+> - `PUT`: draft·approved만(approved를 고치면 draft로 돌아가 다시 승인), 그 밖은 409 `CONFLICT_STALE`. `approve`: draft만. `withdraw`: sent·approved → withdrawn(미발송 푸시 취소, 앱 내 알림 행은 유지).
+> - 대상: 공지 = `users.status = 'active'` 전체, 마케팅 = 활성 + `notification_settings.marketing`. 휴면·정지 제외. `audience` = `{ recipients, pushable }`(푸시 토큰 보유).
+> - `test` `{ userId }`: 그 사용자 1명에게 "[테스트] " 제목으로 바로(동의·대상 조건 무시, 통계 제외). 없는 사용자 400 `userId` `not_found`. 게시 전 공지의 상세는 앱에서 404.
+> - 앱 `GET /notices/{id}` 제목도 마케팅이면 "(광고) " 포함.
+
 ### 7.7 원격 설정
 | 메서드·경로 | 권한 | 설명 |
 |---|---|---|
@@ -1107,3 +1115,4 @@ v1.1에서 PRD v1.2 대조 요청(handoff `20261021-planner-developer-api-v1-prd
 - 2026-10-23: T-024 — `GET /auth/me` 응답에 `csrfToken` 추가
 - 2026-10-23: T-025 — 개발 전용 로그인(`dev:{이름}`, 비운영만) 메모. 앱은 미구현 API(`/races/count`·`/races/calendar`·`/notices/{id}`)를 목록·알림 본문으로 대체 중 (tech/03 9-0-2)
 - 2026-10-27: T-026 — `GET /races/count`·`GET /races/calendar`·`GET /notices/{id}` 구현 메모, `GET /app-config`에 `privacyPolicyUrl`, 관리자 `GET /app-configs`·`PUT /app-configs/{key}`(`privacy_policy_url` 포함) 구현
+- 2026-10-27: T-030 — 관리자 공지·푸시 API 구현 메모(7.6), 앱 공지 상세 제목 마케팅 접두
