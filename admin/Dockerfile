@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 # 관리자 웹 운영 이미지 (T-029, tech/07). Next.js standalone 서버, 포트 3100.
-# 운영에서는 ALB가 관리자 호스트의 /api/admin/*를 API로 보내므로(같은 출처) Next rewrites는 쓰이지 않는다.
+# 운영에서는 앞단 프록시(Caddy, 확장 단계는 ALB)가 관리자 호스트의 /api/admin/*를 API로 보내므로(같은 출처) Next rewrites는 쓰이지 않는다.
 # 빌드 (저장소 루트에서): docker build -f admin/Dockerfile -t berun-admin .
 
 ARG NODE_VERSION=22.23.4

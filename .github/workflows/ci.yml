@@ -121,3 +121,24 @@ jobs:
           tags: berun-${{ matrix.image }}:ci
           cache-from: type=gha,scope=${{ matrix.image }}
           cache-to: type=gha,mode=max,scope=${{ matrix.image }}
+
+  # (T-029, D-022) 서버 1대 운영 구성: compose·Caddy 설정과 운영 스크립트 문법만 확인한다 (기동·배포 없음)
+  deploy-config:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compose config
+        working-directory: deploy
+        run: |
+          sed -e 's/^POSTGRES_PASSWORD=$/POSTGRES_PASSWORD=ci/' -e 's/^REDIS_PASSWORD=$/REDIS_PASSWORD=ci/' \
+              -e 's/^ACME_EMAIL=$/ACME_EMAIL=ci@example.com/' .env.example > "$RUNNER_TEMP/.env"
+          touch "$RUNNER_TEMP/.env.app"
+          APP_ENV_FILE="$RUNNER_TEMP/.env.app" docker compose --env-file "$RUNNER_TEMP/.env" -f compose.prod.yml config --quiet
+      - name: Caddyfile
+        run: |
+          docker run --rm -v "$PWD/deploy/Caddyfile:/etc/caddy/Caddyfile:ro" \
+            -e API_HOST=api.example.com -e ADMIN_HOST=admin.example.com -e ACME_EMAIL=ci@example.com \
+            -e ADMIN_ALLOW_CIDRS=192.0.2.1/32 caddy:2.10-alpine caddy validate --config /etc/caddy/Caddyfile
+      - name: Shell scripts
+        run: shellcheck -x deploy/scripts/*.sh

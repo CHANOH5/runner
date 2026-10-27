@@ -1,0 +1,11 @@
+[Unit]
+Description=BeRun daily backup at 04:30 KST
+
+[Timer]
+# 서버 시계는 UTC. 19:30 UTC = 04:30 KST (사용이 가장 적은 새벽)
+OnCalendar=*-*-* 19:30:00 UTC
+RandomizedDelaySec=10m
+Persistent=true
+
+[Install]
+WantedBy=timers.target

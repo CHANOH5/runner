@@ -1,9 +1,9 @@
 # syntax=docker/dockerfile:1.7
-# 서버 운영 이미지 (T-029, tech/07). API와 워커가 같은 이미지를 쓰고 ECS 서비스에서 명령만 다르다:
+# 서버 운영 이미지 (T-029, tech/07). API와 워커가 같은 이미지를 쓰고 명령만 다르다 (deploy/compose.prod.yml):
 #   API:    node dist/server.js           (기본 CMD)
 #   워커:   node dist/worker/index.js
-#   마이그레이션: node dist/db/migrate.js  (배포 전 ECS 일회성 작업)
-#   첫 owner:     node dist/cli/create-owner.js --email ...  (ECS Exec, tech/07)
+#   마이그레이션: node dist/db/migrate.js  (배포마다 먼저, compose의 migrate 서비스)
+#   첫 owner:     node dist/cli/create-owner.js --email ...  (tech/07 3장)
 # 빌드 (저장소 루트에서): docker build -f server/Dockerfile -t berun-server .
 
 ARG NODE_VERSION=22.23.4

@@ -1,0 +1,182 @@
+# 운영 최소 구성 (D-022, T-029, tech/07): 서버 1대에 API·워커·관리자 웹·PostgreSQL·Redis·Caddy.
+# 서버의 /opt/berun/deploy에서 실행한다. 값은 같은 폴더의 .env(compose 치환)와 .env.app(서버 비밀값)에서 읽는다 —
+# 둘 다 서버에서만 만들고 커밋하지 않는다 (.env.example, .env.app.example 참고).
+#
+#   docker compose -f compose.prod.yml --profile ops run --rm migrate   # 마이그레이션 (배포마다 먼저)
+#   docker compose -f compose.prod.yml up -d                            # 기동·갱신
+#   보통은 scripts/deploy.sh <이미지 태그> 가 위 순서를 대신한다
+#
+# 공개 포트는 Caddy의 80·443뿐. DB·Redis는 내부 네트워크에만 있고 호스트에 포트를 열지 않는다.
+# 관리자 웹은 Caddy가 허용 IP에만 열고(비면 전부 차단), 서버 루프백 127.0.0.1:8081로 SSH 터널 접속을 받는다.
+# 메모리 한도 합계 ≈ 1.6GB — 2GB 서버 기준 예산은 tech/07 1.3.
+name: berun-prod
+
+x-server: &server
+  image: ${SERVER_IMAGE:-berun-server}:${IMAGE_TAG:-local}
+  build:
+    context: ..
+    dockerfile: server/Dockerfile
+  restart: unless-stopped
+  env_file: ['${APP_ENV_FILE:-.env.app}']
+  environment: &server-env
+    NODE_ENV: ${NODE_ENV:-production}
+    # 같은 서버 안 Docker 네트워크라 TLS 없이 접속한다 (외부에 포트가 없다)
+    DATABASE_URL: postgres://berun:${POSTGRES_PASSWORD:?.env에 POSTGRES_PASSWORD}@postgres:5432/berun
+    REDIS_URL: redis://:${REDIS_PASSWORD:?.env에 REDIS_PASSWORD}@redis:6379
+    AWS_REGION: ap-northeast-2
+  depends_on:
+    postgres: { condition: service_healthy }
+    redis: { condition: service_healthy }
+  networks: [backend]
+  logging: &logging
+    driver: json-file
+    options: { max-size: 10m, max-file: '5' }
+
+services:
+  proxy:
+    image: caddy:2.10-alpine
+    restart: unless-stopped
+    ports:
+      - '${HTTP_PORT:-80}:80'
+      - '${HTTPS_PORT:-443}:443'
+      # 관리자 SSH 터널 전용 — 서버 루프백에만 연다 (tech/07 4장)
+      - '127.0.0.1:${ADMIN_TUNNEL_PORT:-8081}:8081'
+    environment:
+      API_HOST: ${API_HOST:?.env에 API_HOST}
+      ADMIN_HOST: ${ADMIN_HOST:?.env에 ADMIN_HOST}
+      ACME_EMAIL: ${ACME_EMAIL:?.env에 ACME_EMAIL (인증서 만료 알림)}
+      # 공백으로 구분한 CIDR. 비어 있으면 아무도 아닌 주소(TEST-NET-1) 하나만 둬서 관리자 호스트를 전부 차단한다
+      ADMIN_ALLOW_CIDRS: ${ADMIN_ALLOW_CIDRS:-192.0.2.1/32}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on: [api, admin]
+    networks: [backend]
+    deploy:
+      resources:
+        limits: { memory: 128m }
+    logging: *logging
+
+  api:
+    <<: *server
+    environment:
+      <<: *server-env
+      NODE_OPTIONS: --max-old-space-size=256
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:3000/health').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+    deploy:
+      resources:
+        limits: { memory: 384m }
+
+  worker:
+    <<: *server
+    command: ['node', 'dist/worker/index.js']
+    environment:
+      <<: *server-env
+      NODE_OPTIONS: --max-old-space-size=192
+    deploy:
+      resources:
+        limits: { memory: 256m }
+
+  # 일회성: 마이그레이션 (deploy.sh가 api·worker 갱신 전에 실행). 첫 owner 생성도 이 서비스로 (tech/07 3장 7단계)
+  migrate:
+    <<: *server
+    command: ['node', 'dist/db/migrate.js']
+    restart: 'no'
+    profiles: [ops]
+
+  admin:
+    image: ${ADMIN_IMAGE:-berun-admin}:${IMAGE_TAG:-local}
+    build:
+      context: ..
+      dockerfile: admin/Dockerfile
+    restart: unless-stopped
+    environment:
+      NODE_OPTIONS: --max-old-space-size=128
+    networks: [backend]
+    deploy:
+      resources:
+        limits: { memory: 192m }
+    logging: *logging
+
+  postgres:
+    # PostGIS 공식 이미지는 arm64 빌드가 없어 같은 관리자의 멀티 아키텍처 빌드 (로컬 docker-compose.yml과 같은 이미지)
+    image: imresamu/postgis:16-3.5
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: berun
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?.env에 POSTGRES_PASSWORD}
+      POSTGRES_DB: berun
+      TZ: UTC
+    # 2GB 서버에 맞춘 값. 연결: API 10 + 워커 4 + 마이그레이션·백업 여유
+    command:
+      - postgres
+      - -c
+      - shared_buffers=128MB
+      - -c
+      - effective_cache_size=384MB
+      - -c
+      - work_mem=4MB
+      - -c
+      - maintenance_work_mem=64MB
+      - -c
+      - max_connections=40
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U berun -d berun']
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    shm_size: 128m
+    networks: [backend]
+    deploy:
+      resources:
+        limits: { memory: 512m }
+    logging: *logging
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?.env에 REDIS_PASSWORD}
+    # BullMQ: 키를 내보내면 작업이 사라지므로 noeviction. AOF로 재시작 후에도 대기 작업 유지
+    command:
+      - sh
+      - -c
+      - >-
+        exec redis-server --appendonly yes --appendfsync everysec
+        --maxmemory 96mb --maxmemory-policy noeviction
+        --requirepass "$$REDIS_PASSWORD"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ['CMD-SHELL', 'redis-cli -a "$$REDIS_PASSWORD" --no-auth-warning ping | grep -q PONG']
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    networks: [backend]
+    deploy:
+      resources:
+        limits: { memory: 128m }
+    logging: *logging
+
+networks:
+  backend: {}
+
+volumes:
+  postgres-data:
+  redis-data:
+  caddy-data:
+  caddy-config:
