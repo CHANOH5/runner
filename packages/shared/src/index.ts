@@ -10,3 +10,4 @@ export * from './query.js';
 export * from './races.js';
 export * from './records.js';
 export * from './registrations.js';
+export * from './admin-notices.js';

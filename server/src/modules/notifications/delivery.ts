@@ -30,6 +30,12 @@ import {
   type PushMessage,
   type RateLimiter,
 } from './push.js';
+import {
+  isNoticeKind,
+  materializeNotices,
+  NOTICE_KINDS,
+  prepareNoticeNotification,
+} from './notices.js';
 import { render, renderBundle, type Rendered } from './render.js';
 import { recalculateSchedules } from './schedule.js';
 
@@ -225,6 +231,8 @@ async function prepare(
   ctx: SendContext,
   now: Date,
 ): Promise<Rendered | { cancel: CancelReason }> {
+  // 공지·마케팅 (N-08): 대회와 무관 — 공지 상태·야간·동의만 다시 본다
+  if (isNoticeKind(row.kind)) return prepareNoticeNotification(db, row, now);
   const kind = row.kind as DeliverableKind;
   const payload = row.payload as NotificationPayload;
   const race = row.raceId ? ctx.races.get(row.raceId) : undefined;
@@ -322,7 +330,7 @@ export async function sendDue(deps: DeliveryDeps): Promise<SendResult> {
     retried: 0,
     noDevice: 0,
   };
-  const kinds = [...SCHEDULED_KINDS, ...RACE_CHANGE_KINDS];
+  const kinds = [...SCHEDULED_KINDS, ...RACE_CHANGE_KINDS, ...NOTICE_KINDS];
 
   const claimed = await deps.db.execute<{ id: string }>(sql`
     UPDATE notifications SET next_attempt_at = ${ts(new Date(now.getTime() + LEASE_MS))}
@@ -559,9 +567,10 @@ async function closeSchedules(db: Db, now: Date) {
   `);
 }
 
-/** 워커 1회 실행: 대상 확정 → 발송 */
+/** 워커 1회 실행: 대상 확정(대회 예약·공지) → 발송 */
 export async function runTick(deps: DeliveryDeps) {
   const materialized = await materializeDue(deps);
+  const notices = await materializeNotices(deps.db, deps.clock());
   const sent = await sendDue(deps);
-  return { materialized, sent };
+  return { materialized, notices, sent };
 }
