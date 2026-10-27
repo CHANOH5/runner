@@ -4,6 +4,7 @@ import { Pressable, Switch, View } from 'react-native';
 import { api } from '../../api';
 import { saveErrorMessage, screenErrorMessage } from '../../api/messages';
 import { TERMS_LABEL } from '../../components/terms';
+import { usePrivacyPolicyUrl } from '../../components/usePrivacyPolicyUrl';
 import { ErrorState, Row, Screen, SkeletonCards, T } from '../../components/ui';
 import { marketingToast } from '../../features/consents';
 import { openInAppBrowser } from '../../lib/external';
@@ -28,7 +29,9 @@ export default function Privacy() {
     }
   };
 
-  const privacyUrl = consents.data?.find((x) => x.kind === 'privacy')?.contentUrl;
+  const privacyUrl = usePrivacyPolicyUrl(
+    consents.data?.find((x) => x.kind === 'privacy')?.contentUrl,
+  );
 
   return (
     <>

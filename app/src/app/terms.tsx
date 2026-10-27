@@ -16,6 +16,7 @@ import {
 } from '../components/ui';
 import { openInAppBrowser } from '../lib/external';
 import { PrivacySummary, TERMS_LABEL } from '../components/terms';
+import { usePrivacyPolicyUrl } from '../components/usePrivacyPolicyUrl';
 import { useSession } from '../stores/session';
 
 const KIND_ORDER = ['service', 'privacy', 'marketing'];
@@ -61,7 +62,7 @@ export default function Terms() {
     router.push('/profile-setup');
   };
 
-  const privacy = items.find((t) => t.kind === 'privacy');
+  const privacyPolicyUrl = usePrivacyPolicyUrl(items.find((t) => t.kind === 'privacy')?.contentUrl);
 
   return (
     <>
@@ -102,10 +103,10 @@ export default function Terms() {
               />
             ))}
             <PrivacySummary />
-            {privacy ? (
+            {privacyPolicyUrl ? (
               <LinkText
                 label="개인정보 처리방침 보기"
-                onPress={() => void openInAppBrowser(privacy.contentUrl)}
+                onPress={() => void openInAppBrowser(privacyPolicyUrl)}
               />
             ) : null}
           </>

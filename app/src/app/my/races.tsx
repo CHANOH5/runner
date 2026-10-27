@@ -1,5 +1,5 @@
 import type { MyRaceItem } from '@berun/shared';
-import { useInfiniteQuery } from '@tanstack/react-query';
+import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useState } from 'react';
 import { FlatList, RefreshControl, View } from 'react-native';
@@ -24,6 +24,8 @@ import { toast } from '../../stores/toast';
 import { useTheme } from '../../theme';
 
 type Tab = 'interested' | 'upcoming' | 'past';
+/** [되돌리기] 토스트 표시 시간 (PRD v1.11 6.19) */
+const UNDO_MS = 5000;
 const EMPTY: Record<Tab, string> = {
   interested: '관심 대회가 없어요',
   upcoming: '참가 예정 대회가 없어요',
@@ -43,7 +45,38 @@ export default function MyRaces() {
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (last) => last.nextCursor ?? undefined,
   });
-  const items = q.data?.pages.flatMap((p) => p.items) ?? [];
+  const qc = useQueryClient();
+  // 관심 탭에서 하트로 끈 대회는 바로 뺀다 (다시 읽기 전에도). [되돌리기]면 다시 넣는다 (PRD v1.11 6.19)
+  const [removed, setRemoved] = useState<Set<string>>(new Set());
+  const items = (q.data?.pages.flatMap((p) => p.items) ?? []).filter(
+    (i) => tab !== 'interested' || !removed.has(i.id),
+  );
+
+  const onInterestOff = (item: MyRaceItem) => {
+    if (tab !== 'interested') return;
+    setRemoved((prev) => new Set(prev).add(item.id));
+    toast('관심 대회에서 뺐어요', {
+      duration: UNDO_MS,
+      action: {
+        label: '되돌리기',
+        onPress: () => {
+          api
+            .interestOn(item.id)
+            .then(() => {
+              setRemoved((prev) => {
+                const next = new Set(prev);
+                next.delete(item.id);
+                return next;
+              });
+              for (const key of [['my-races'], ['me'], ['home'], ['races'], ['race', item.id]]) {
+                void qc.invalidateQueries({ queryKey: key });
+              }
+            })
+            .catch(() => toast('저장하지 못했어요'));
+        },
+      },
+    });
+  };
 
   const open = (item: MyRaceItem) => {
     if (item.unavailable) return toast('더 이상 볼 수 없는 대회예요');
@@ -135,6 +168,7 @@ export default function MyRaces() {
               muted={item.registration?.entryStatus === 'missed' || item.unavailable}
               onPress={() => open(item)}
               extra={extra(item)}
+              onInterestOff={() => onInterestOff(item)}
             />
           )}
         />
