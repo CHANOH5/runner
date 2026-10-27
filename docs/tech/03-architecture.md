@@ -187,8 +187,8 @@ app/src/components/map/
 - (T-020, PRD v1.7) 대회명 줄이기 = 상한 − 고정 문구 길이, N-06a·b 제목 "{대회명} 대회가 …", 유효 구간 N-04 D-7 당일 23:59·N-06 대회일까지, 늦어서 보내지 않은 건은 `last_error = expired`·`SendResult.expired`로 실패·취소와 따로 집계, **휴면 계정도 N-06 대상**(P-RET-03 예외). 묶음 N-02는 오픈 시각 미정 대회가 섞이면 "오늘 접수가 시작되는 대회 n개".
 - (T-020) 파기 배치 `retention` 작업: 매일 04:00 KST(BullMQ cron), 알림 생성 90일·끝난 예약 행 90일 삭제 → `deletion_jobs`. N-07 제보 결과는 관리자 처리 시 앱 내 알림 행으로 바로 남긴다.
 - 관리자 대회 저장 → `RaceUpdateSink` → BullMQ `race-updated` (API 서버 `server.ts`가 큐에 넣는다).
-- 남은 것: Expo receipt 확인(15분 뒤), N-08 공지·마케팅.
-- 공지·마케팅(N-08, `notices`): owner 승인 → 예약 시각에 대상(전체 / 마케팅 동의자) 조회 후 같은 발송 경로. 마케팅은 08:00~20:59만 (DB CHECK + 발송 시 재확인).
+- 남은 것: Expo receipt 확인(15분 뒤).
+- 공지·마케팅(N-08, `notices`, **T-030 구현** `modules/notifications/notices.ts`·`modules/admin/notices-service.ts`): 작성(draft) → owner 승인(approved) → 워커 tick(`runTick` 안 `materializeNotices`)이 게시 시각(예약 시각 또는 승인 시각)이 된 공지를 `sent`로 바꾸고 대상자(공지 = 활성 전체, 마케팅 = 활성 + 마케팅 동의)마다 `notifications` 행(kind `notice`·`marketing`, `notice_id`, 문구·딥링크 `berun://notices/{id}`는 payload)을 만든다. 푸시 동반이면 `scheduled`로 넣어 **기존 `sendDue` 경로**(임대·배치·재시도·무효 토큰·`sent_at`)가 보내고, 아니면 앱 내만(`sent`, `last_error = in_app_only`). 묶음 없음. 발송 직전 확인(`prepareNoticeNotification`): 공지가 아직 `sent`(내리지 않음), 마케팅 야간 아님, 사용자 활성·동의 유지. 마케팅은 야간이면 게시 자체를 미룬다 (DB CHECK + 저장·승인·게시·발송 때 재확인). 내리기 → 미발송 푸시 `cancelled`(`withdrawn`). 통계는 알림 행 집계(테스트 발송 제외).
 
 ## 8. 가입 · 탈퇴의 외부 연동 (F-001, F-072)
 
@@ -291,7 +291,7 @@ server/src/
 admin/src/
 ├── app/login/            A-001 (비밀번호 → TOTP)
 ├── app/(console)/        세션 확인 레이아웃 + 화면: dashboard(A-002), races·races/new·races/[id](A-003),
-│                         reports·reports/[id](A-004), notices(A-008 자리)
+│                         reports·reports/[id](A-004), notices·notices/new·notices/[id](A-008: 목록·작성·미리보기·예약·테스트·승인·발송 결과·내리기)
 ├── components/           세션(SessionProvider), 대회 폼(race-form + race-form-model), 반려 모달, 공통 UI
 └── lib/                  api(같은 출처 fetch·CSRF·에러), messages(에러 코드 → 한국어), format(빠른 입력 해석·라벨)
 ```
@@ -317,9 +317,9 @@ app/src/
 - **공통 헤더**: `X-App-Version`(스토어 버전, 웹은 app.json), `X-Platform`, `X-Device-Id`(설치 시 생성해 기기 저장소에 보관). 생성형 POST는 `Idempotency-Key`.
 - **기기 저장 (서버 저장 없음)**: 복귀 질문 제한(대회별 무시 횟수·마지막 시각·완료), 공식 접수 안내 "다시 보지 않기", 대회 필터·보기, 최근 검색어, 마지막 지도 앱, 만 14세 미만 24시간 차단, 알림 권한 시트 1회. 로그아웃·탈퇴 시 `user.*` 키만 지운다.
 - **로컬 확인 (웹)**: Expo 웹이 같은 출처 `/v1/*`를 Metro 개발 서버 미들웨어로 API 서버에 넘긴다 (`app/metro.config.js`). 서버에 CORS를 열지 않는다. 운영 앱은 네이티브만 배포하므로 웹은 개발 확인 전용이다.
-- **PRD v1.11 (T-027)**: 추천 대회는 내 지역 대회를 먼저(서버도 같은 순서, 앱이 안정 정렬로 한 번 더), 전국 보충이면 "추천 대회" + 안내 줄. 관심 탭 해제는 하트 → 카드 즉시 제외 + 토스트 [되돌리기](5초, 다시 PUT). 처리방침 주소는 `GET /app-config`의 `privacyPolicyUrl`을 앱 스키마(`AppConfigRes`)로 선택적으로 읽고 없으면 수집·이용 동의 전문(T-026 병합 후 공유 스키마로 교체). 날짜 입력은 네이티브 달력 피커(`@react-native-community/datetimepicker`, 1990-01-01~오늘) + [오늘]·[어제], 웹 미리보기는 `DateField.web.tsx` 직접 입력.
-- **API 대체 (서버 미구현)**: `GET /races/calendar` 대신 그 달 목록(`from`·`to`, 50개씩)으로 날짜별 개수를 센다. `GET /races/count` 대신 목록 첫 50개로 센다(넘으면 "50개 이상"). `GET /notices/{id}` 대신 알림에 담긴 제목·본문을 보여준다. API가 생기면 바꾼다.
-  - (T-026) 서버에 세 API가 생겼다. 달력의 지난 날짜는 `includeEnded=true`를 보내야 센다 (tech/06 6.4). 앱 교체는 T-027.
+- **PRD v1.11 (T-027)**: 추천 대회는 내 지역 대회를 먼저(서버도 같은 순서, 앱이 안정 정렬로 한 번 더), 전국 보충이면 "추천 대회" + 안내 줄. 관심 탭 해제는 하트 → 카드 즉시 제외 + 토스트 [되돌리기](5초, 다시 PUT). 처리방침 주소는 `GET /app-config`의 `privacyPolicyUrl`(공유 `AppConfig`, T-028부터 앱 전용 확장 없음), null이면 수집·이용 동의 전문. 날짜 입력은 네이티브 달력 피커(`@react-native-community/datetimepicker`, 1990-01-01~오늘) + [오늘]·[어제], 웹 미리보기는 `DateField.web.tsx` 직접 입력.
+- **서버 API 연결 (T-028)**: 필터 결과 수는 `GET /races/count`(리스트 보기 기준, "종료 포함"을 따름), 달력은 `GET /races/calendar`, 공지 상세는 `GET /notices/{id}`(줄바꿈 유지·URL 링크·하단 이동 버튼, 410 → "내려간 공지예요"). T-025의 목록·알림 본문 대체는 지웠다.
+- **캘린더 지난 날짜 (PRD v1.12 4.5, T-028)**: 캘린더 보기에서는 "종료 포함"과 상관없이 달력 요청과 날짜 목록 요청(`GET /races?date=`) **둘 다 `includeEnded=true`** 를 보내 숫자와 목록이 항상 같다. 다른 필터(지역·거리·접수 상태·참가비·취소 숨기기)는 두 요청에 똑같이, 기간 필터는 달이 기간이라 보내지 않는다. 지난 날짜의 점·개수는 흐리게. 코드 `app/src/features/calendar.ts`.
 
 ## 9. 앱 원격 설정 · 강제 업데이트
 
@@ -341,6 +341,8 @@ app/src/
 - 2026-10-23: T-022 — 소셜 연결 해제 워커 구현 표(8장)
 - 2026-10-23: T-023 — 휴면 처리(8-1), D-020 연결 해제 실패 기록 1년 파기
 - 2026-10-23: T-024 — 관리자 웹 구조(9-0-1): 같은 출처 프록시, CSRF 복구, 클라이언트 화면
+- 2026-10-27: T-030 — 7장 N-08 공지·마케팅 발송 구현, 9-0-1 관리자 웹 A-008
+- 2026-10-27: T-028 — 9-0-2: 서버 API 3개 연결(대체 코드 삭제), 캘린더 지난 날짜 includeEnded 규칙, 공유 AppConfig 사용
 - 2026-10-27: T-027 — PRD v1.11 앱 반영 메모(9-0-2): 추천 대회 정렬·제목, 관심 해제 되돌리기, 처리방침 원격 설정, 네이티브 달력 피커
 - 2026-10-23: T-025 — 모바일 앱 구조(9-0-2): 토큰·게이트·기기 저장·웹 확인 프록시·API 대체, 지도 래퍼 현재 상태(6장), 개발 전용 로그인(8장)
 - 2026-10-27: T-026 — 9-0-2 API 대체 항목에 서버 구현 완료 메모

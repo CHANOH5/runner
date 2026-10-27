@@ -14,6 +14,7 @@ import { saveRecordWithDuplicateCheck } from '../../features/records';
 import { todayKst } from '../../lib/format';
 import { getPushPermission } from '../../lib/push';
 import { toast } from '../../stores/toast';
+import { analytics } from '../../lib/analyticsClient';
 
 const MAX_FORMS = 3;
 
@@ -47,9 +48,17 @@ export default function OnboardingRecords() {
     setSaving(true);
     try {
       for (const r of results) {
-        await saveRecordWithDuplicateCheck(r.values!, () =>
+        const saved = await saveRecordWithDuplicateCheck(r.values!, () =>
           confirm({ message: '같은 기록이 이미 있어요. 그래도 저장할까요?', confirmLabel: '저장' }),
         );
+        if (saved) {
+          analytics.track('record_saved', {
+            distance_category: saved.category,
+            kind: saved.kind,
+            is_edit: false,
+            source: 'onboarding',
+          });
+        }
       }
       await next();
     } catch (e) {

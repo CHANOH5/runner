@@ -10,6 +10,12 @@ import {
   AdminSessionInfo,
   AdminMfaReq,
   AdminMfaRes,
+  AdminNotice,
+  AdminNoticeInput,
+  AdminNoticeListQuery,
+  AdminNoticePage,
+  NoticeAudience,
+  NoticeTestReq,
   AdminPatchReq,
   AdminRace,
   AdminRaceDraftInput,
@@ -51,6 +57,16 @@ import {
   saveRace,
   unpublishRace,
 } from './races-service.js';
+import {
+  approveNotice,
+  createNotice,
+  listNotices,
+  loadNotice,
+  noticeAudience,
+  testNotice,
+  updateNotice,
+  withdrawNotice,
+} from './notices-service.js';
 import { getReport, listReports, resolveReports } from './reports-service.js';
 import { ADMIN_COOKIE, destroyAdminSession, SESSION_ABSOLUTE_MS } from './session.js';
 
@@ -60,7 +76,8 @@ import { ADMIN_COOKIE, destroyAdminSession, SESSION_ABSOLUTE_MS } from './sessio
  * 권한: owner 전부 / operator 대회·제보 쓰기 / viewer 조회 (PRD 8.1). 쓰기는 모두 admin_audit_logs.
  * 구현: 인증, 관리자 계정, 대회(목록·초안·저장·게시·숨김·삭제·복제·중복·영향), 제보
  *       원격 설정(GET /app-configs, PUT /app-configs/{key})
- * 남은 것: 대시보드, 수집 후보, 공지·푸시, 지오코딩(D-008 확정 후)
+ *       공지·푸시(A-008, T-030: 목록·작성·수정·대상 수·테스트·승인(owner)·내리기)
+ * 남은 것: 대시보드, 수집 후보, 지오코딩(D-008 확정 후)
  */
 export default async function adminRoutes(app: FastifyInstance) {
   await app.register(cookie);
@@ -291,6 +308,75 @@ export default async function adminRoutes(app: FastifyInstance) {
         memo: request.body.action,
       };
       return resolveReports(app.db, request.admin!.id, request.body);
+    },
+  );
+
+  // ---- 공지·푸시 (7.6, A-008) — 쓰기 owner·operator, 승인은 owner ----
+  const NoticeRes = { 200: AdminNotice };
+  r.get(
+    '/notices',
+    {
+      ...readers,
+      schema: { querystring: AdminNoticeListQuery, response: { 200: AdminNoticePage } },
+    },
+    async (request) => listNotices(app.db, request.query),
+  );
+  r.get(
+    '/notices/:id',
+    { ...readers, schema: { params: IdParams, response: NoticeRes } },
+    async (request) => loadNotice(app.db, request.params.id),
+  );
+  r.post(
+    '/notices',
+    { ...writers, schema: { body: AdminNoticeInput, response: { 201: AdminNotice } } },
+    async (request, reply) => {
+      const notice = await createNotice(app.db, request.admin!.id, request.body, new Date());
+      request.audit = { targetType: 'notice', targetId: notice.id, memo: notice.kind };
+      return reply.code(201).send(notice);
+    },
+  );
+  r.put(
+    '/notices/:id',
+    { ...writers, schema: { params: IdParams, body: AdminNoticeInput, response: NoticeRes } },
+    async (request) => {
+      request.audit = { targetType: 'notice' };
+      return updateNotice(app.db, request.params.id, request.body, new Date());
+    },
+  );
+  r.get(
+    '/notices/:id/audience',
+    { ...writers, schema: { params: IdParams, response: { 200: NoticeAudience } } },
+    async (request) => noticeAudience(app.db, request.params.id),
+  );
+  r.post(
+    '/notices/:id/test',
+    {
+      ...writers,
+      schema: {
+        params: IdParams,
+        body: NoticeTestReq,
+        response: { 200: z.object({ notificationId: Id }) },
+      },
+    },
+    async (request) => {
+      request.audit = { targetType: 'notice', memo: `test user ${request.body.userId}` };
+      return testNotice(app.db, request.params.id, request.body.userId, new Date());
+    },
+  );
+  r.post(
+    '/notices/:id/approve',
+    { ...owner, schema: { params: IdParams, response: NoticeRes } },
+    async (request) => {
+      request.audit = { targetType: 'notice' };
+      return approveNotice(app.db, request.admin!.id, request.params.id, new Date());
+    },
+  );
+  r.post(
+    '/notices/:id/withdraw',
+    { ...writers, schema: { params: IdParams, response: NoticeRes } },
+    async (request) => {
+      request.audit = { targetType: 'notice' };
+      return withdrawNotice(app.db, request.params.id);
     },
   );
 

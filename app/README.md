@@ -25,7 +25,7 @@ src/
 │   │   update-required · maintenance       S-002~S-004, 게이트 화면
 │   ├── onboarding/      S-005 기록, S-006 알림 권한
 │   ├── (tabs)/          하단 탭 4개 (D-012): home S-010 · races S-020 · records S-030 · my S-060
-│   ├── notifications    S-011 (+ notices/[id] 공지 — API 전까지 알림 본문 표시)
+│   ├── notifications    S-011 (+ notices/[id] 공지 상세 — GET /notices/{id})
 │   ├── races/           search·filter S-021, [raceId] S-022, [raceId]/register S-023, [raceId]/report S-024
 │   ├── records/         edit S-031, predict S-032
 │   ├── predictions/     목록, [predictionId] S-033 (저장된 예측, preview = S-023 미리보기)

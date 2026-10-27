@@ -2,7 +2,7 @@ import type { MyRaceItem } from '@berun/shared';
 import { act, fireEvent, screen, userEvent, waitFor } from '@testing-library/react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { api } from '../api';
-import { AppConfigRes } from '../api/endpoints';
+import { AppConfig } from '@berun/shared';
 import MyRaces from '../app/my/races';
 import Home from '../app/(tabs)/home';
 import Terms from '../app/terms';
@@ -145,6 +145,7 @@ describe('처리방침 주소 (S-003, PRD v1.11 4.2)', () => {
     minNativeVersion: { ios: '1.0.0', android: '1.0.0' },
     maintenance: { active: false, until: null },
     supportEmail: null,
+    privacyPolicyUrl: null,
   };
 
   beforeEach(() =>
@@ -156,7 +157,7 @@ describe('처리방침 주소 (S-003, PRD v1.11 4.2)', () => {
   it('privacyPolicyUrl이 있으면 그 주소를 연다', async () => {
     mocked.terms!.mockResolvedValue(terms);
     mocked.appConfig!.mockResolvedValue(
-      AppConfigRes.parse({ ...cfg, privacyPolicyUrl: 'https://policy.test/privacy' }),
+      AppConfig.parse({ ...cfg, privacyPolicyUrl: 'https://policy.test/privacy' }),
     );
     const user = userEvent.setup();
     await renderScreen(<Terms />);
@@ -166,21 +167,18 @@ describe('처리방침 주소 (S-003, PRD v1.11 4.2)', () => {
     );
   });
 
-  it('없으면(T-026 이전 서버 포함) 개인정보 수집·이용 동의 전문', async () => {
+  it('null이면(개발 환경) 개인정보 수집·이용 동의 전문', async () => {
     mocked.terms!.mockResolvedValue(terms);
-    mocked.appConfig!.mockResolvedValue(AppConfigRes.parse(cfg));
+    mocked.appConfig!.mockResolvedValue(AppConfig.parse(cfg));
     const user = userEvent.setup();
     await renderScreen(<Terms />);
     await user.press(await screen.findByText('개인정보 처리방침 보기'));
     expect(openInAppBrowser).toHaveBeenLastCalledWith('https://example.test/privacy');
   });
 
-  it('app-config 스키마: 필드 없음·null·잘못된 값은 null', () => {
-    expect(AppConfigRes.parse(cfg).privacyPolicyUrl).toBeNull();
-    expect(AppConfigRes.parse({ ...cfg, privacyPolicyUrl: null }).privacyPolicyUrl).toBeNull();
-    expect(
-      AppConfigRes.parse({ ...cfg, privacyPolicyUrl: 'not a url' }).privacyPolicyUrl,
-    ).toBeNull();
+  it('공유 app-config 스키마: privacyPolicyUrl은 http(s) 주소 또는 null', () => {
+    expect(AppConfig.parse(cfg).privacyPolicyUrl).toBeNull();
+    expect(AppConfig.safeParse({ ...cfg, privacyPolicyUrl: 'not a url' }).success).toBe(false);
   });
 });
 

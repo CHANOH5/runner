@@ -3,6 +3,7 @@ import { registerDevice } from '../features/auth';
 import { kv } from '../lib/kv';
 import { getPushPermission, requestPushPermission } from '../lib/push';
 import { Button, Card, Sheet, T } from './ui';
+import { analytics } from '../lib/analyticsClient';
 
 /** 예시 알림 카드 — N-02, N-05 문구 (PRD 6.6, 7.2) */
 export function SampleNotifications() {
@@ -48,7 +49,17 @@ export function PushPermissionSheet({
       <SampleNotifications />
       <Button
         label="알림 받기"
-        onPress={() => void requestPushPermission().then(registerDevice).finally(close)}
+        onPress={() =>
+          void requestPushPermission()
+            .then((p) => {
+              analytics.track('notification_permission_result', {
+                granted: p === 'granted',
+                source: 'first_interest',
+              });
+              return registerDevice();
+            })
+            .finally(close)
+        }
       />
       <Button kind="ghost" label="나중에" onPress={close} />
     </Sheet>

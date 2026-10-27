@@ -11,11 +11,14 @@ import {
   Me,
   MyRacePage,
   NicknameAvailability,
+  NoticeDetail,
   NotificationPage,
   NotificationSettingsRes,
   Prediction,
   PredictionCandidates,
   PredictionPage,
+  RaceCalendar,
+  RaceCount,
   RaceDetail,
   RacePage,
   type RecordInput,
@@ -54,20 +57,6 @@ export type RaceFilters = {
   hideCancelled?: boolean;
 };
 
-/**
- * GET /app-config + 처리방침 주소 (PRD v1.11 4.2). `privacyPolicyUrl`은 T-026에서 공유 스키마에 들어온다 —
- * 그 전 서버는 이 필드를 주지 않으므로 앱에서 선택적으로 읽고, 없거나 형식이 틀리면 null로 둔다.
- * T-026 병합 후에는 공유 AppConfig를 그대로 쓰면 된다.
- */
-export const AppConfigRes = AppConfig.extend({
-  privacyPolicyUrl: z
-    .url()
-    .nullable()
-    .optional()
-    .catch(null)
-    .transform((v) => v ?? null),
-});
-
 /** z.input을 쓰는 이유: 기본값이 있는 필드(confirmDuplicate 등)를 생략할 수 있게 */
 type In<T extends z.ZodType> = z.input<T>;
 
@@ -75,7 +64,7 @@ export function createEndpoints(client: ApiClient) {
   const r = client.request;
   return {
     // ---- 앱 설정 · 인증 (6.1, 6.2) ----
-    appConfig: () => r({ path: '/app-config', schema: AppConfigRes, auth: 'none' }),
+    appConfig: () => r({ path: '/app-config', schema: AppConfig, auth: 'none' }),
     socialLogin: (body: SocialLoginReq) =>
       r({ method: 'POST', path: '/auth/social', body, schema: SocialLoginRes, auth: 'none' }),
     terms: () => r({ path: '/terms/current', schema: TermsCurrent, auth: 'none' }),
@@ -128,6 +117,12 @@ export function createEndpoints(client: ApiClient) {
     races: (
       filters: RaceFilters & { q?: string; date?: string; cursor?: string; limit?: number },
     ) => r({ path: '/races', query: filters, schema: RacePage }),
+    /** 필터 결과 수 (S-021 "128개 대회 보기") */
+    raceCount: (filters: RaceFilters) =>
+      r({ path: '/races/count', query: filters, schema: RaceCount }),
+    /** 월간 달력 날짜별 수 (S-020). month = YYYY-MM, 이번 달 −1 ~ +12 */
+    raceCalendar: (month: string, filters: Omit<RaceFilters, 'from' | 'to'>) =>
+      r({ path: '/races/calendar', query: { month, ...filters }, schema: RaceCalendar }),
     race: (raceId: string) => r({ path: `/races/${raceId}`, schema: RaceDetail }),
     interestOn: (raceId: string) =>
       r({ method: 'PUT', path: `/races/${raceId}/interest`, schema: InterestOnRes }),
@@ -204,6 +199,8 @@ export function createEndpoints(client: ApiClient) {
       r({ path: '/me/notifications', query: { cursor }, schema: NotificationPage }),
     unreadCount: () => r({ path: '/me/notifications/unread-count', schema: UnreadCount }),
     markRead: (body: MarkReadReq) => r({ method: 'POST', path: '/me/notifications/read', body }),
+    /** 공지 상세 (PRD 8.6). 내린 공지 410 NOTICE_WITHDRAWN */
+    notice: (id: string) => r({ path: `/notices/${id}`, schema: NoticeDetail }),
   };
 }
 

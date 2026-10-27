@@ -18,6 +18,7 @@ import {
 import { useConfirm } from '../../components/useConfirm';
 import { useSession } from '../../stores/session';
 import { toast } from '../../stores/toast';
+import { analytics } from '../../lib/analyticsClient';
 
 type Reason = z.infer<typeof DeletionReason>;
 const REASONS: [Reason, string][] = [
@@ -52,6 +53,7 @@ export default function DeleteAccount() {
         reasonText: reason === 'other' && text.trim() ? text.trim() : null,
         confirmed: true,
       });
+      analytics.track('account_deleted', { reason_code: reason });
       await clearLocalSession();
       useSession.getState().setGate(null);
       useSession.getState().setStatus('signedOut');

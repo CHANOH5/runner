@@ -30,6 +30,7 @@ import { formatDotDate, REGION_LABELS, todayKst } from '../lib/format';
 import { useSession } from '../stores/session';
 import { toast } from '../stores/toast';
 import { goBack } from '../lib/nav';
+import { analytics } from '../lib/analyticsClient';
 
 type Gender = 'male' | 'female' | 'none';
 
@@ -57,6 +58,7 @@ export default function ProfileSetup() {
   const stopUnderage = async () => {
     if (signup) await api.signupAbort(signup.token).catch(() => undefined);
     await setUnderageBlock();
+    analytics.track('signup_blocked_underage', {});
     setSignup(null);
     router.replace('/underage');
   };
@@ -78,6 +80,12 @@ export default function ProfileSetup() {
       });
       setSignup(null);
       await startSession(res.tokens);
+      analytics.track('signup_completed', {
+        provider: signup.provider ?? res.user.provider,
+        region_code: region,
+        has_gender: gender !== 'none',
+        duration_sec: signup.startedAt ? Math.round((Date.now() - signup.startedAt) / 1000) : null,
+      });
       if (res.marketingAgreedAt) {
         toast(`${formatDotDate(res.marketingAgreedAt)} 마케팅 정보 수신에 동의했어요`);
       }
@@ -88,6 +96,7 @@ export default function ProfileSetup() {
         setCheck({ state: 'error', message: errorMessage(e) });
       } else if (e.code === 'UNDERAGE') {
         await setUnderageBlock();
+        analytics.track('signup_blocked_underage', {});
         setSignup(null);
         router.replace('/underage');
       } else if (e.code === 'SIGNUP_TOKEN_EXPIRED') {

@@ -1,4 +1,3 @@
-import type { RaceSummary } from '@berun/shared';
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
@@ -17,10 +16,19 @@ import {
   SkeletonCards,
   T,
 } from '../../components/ui';
+import {
+  calendarCell,
+  calendarDayQuery,
+  calendarFilters,
+  calendarMonthRange,
+  lastDayOfMonth,
+  monthShift,
+} from '../../features/calendar';
 import { withMonthHeaders } from '../../features/raceList';
 import { filterChips, filtersToQuery, useRaceFilters } from '../../features/raceFilters';
-import { addDaysKst, formatDate, formatMonthHeader, todayKst } from '../../lib/format';
+import { formatDate, formatMonthHeader, todayKst } from '../../lib/format';
 import { useTheme } from '../../theme';
+import { analytics } from '../../lib/analyticsClient';
 
 function SearchBar() {
   const router = useRouter();
@@ -152,13 +160,7 @@ function RaceList() {
 
 const WEEK = ['일', '월', '화', '수', '목', '금', '토'];
 
-function monthShift(month: string, delta: number) {
-  const [y, m] = month.split('-').map(Number) as [number, number];
-  const d = new Date(Date.UTC(y, m - 1 + delta, 1));
-  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
-}
-
-/** 캘린더 보기 (PRD 4.5). 달력 API(/races/calendar)가 아직 없어 그 달 목록으로 날짜별 개수를 센다 */
+/** 캘린더 보기 (PRD v1.12 4.5): 지난 날짜도 점·개수와 그날 목록을 보인다 (회색) */
 function RaceCalendar() {
   const router = useRouter();
   const c = useTheme();
@@ -166,46 +168,43 @@ function RaceCalendar() {
   const { filters } = useRaceFilters();
   const [month, setMonth] = useState(today.slice(0, 7));
   const [selected, setSelected] = useState(today);
-  const minMonth = monthShift(today.slice(0, 7), -1);
-  const maxMonth = monthShift(today.slice(0, 7), 12);
+  const range = calendarMonthRange(today);
+  const base = calendarFilters(filters, today);
 
-  const from = `${month}-01`;
-  const to = addDaysKst(`${monthShift(month, 1)}-01`, -1);
-  const base = { ...filtersToQuery(filters, today), from, to, includeEnded: true };
-  const q = useQuery({
-    queryKey: ['races', 'calendar', base],
-    queryFn: async () => {
-      const all: RaceSummary[] = [];
-      let cursor: string | undefined;
-      for (let i = 0; i < 10; i++) {
-        const page = await api.races({ ...base, cursor, limit: 50 });
-        all.push(...page.items);
-        if (!page.nextCursor) break;
-        cursor = page.nextCursor;
-      }
-      return all;
-    },
+  const cal = useQuery({
+    queryKey: ['races', 'calendar', month, base],
+    queryFn: () => api.raceCalendar(month, base),
   });
-  const byDate = useMemo(() => {
-    const map = new Map<string, RaceSummary[]>();
-    for (const r of q.data ?? []) map.set(r.raceDate, [...(map.get(r.raceDate) ?? []), r]);
-    return map;
-  }, [q.data]);
+  const day = useInfiniteQuery({
+    queryKey: ['races', 'calendar-day', selected, base],
+    queryFn: ({ pageParam }) =>
+      api.races({ ...calendarDayQuery(filters, today, selected), cursor: pageParam, limit: 20 }),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (last) => last.nextCursor ?? undefined,
+  });
+  const counts = useMemo(
+    () => new Map((cal.data?.days ?? []).map((d) => [d.date, d.count])),
+    [cal.data],
+  );
+  const dayRaces = day.data?.pages.flatMap((p) => p.items) ?? [];
 
   const [y, m] = month.split('-').map(Number) as [number, number];
   const firstWd = new Date(Date.UTC(y, m - 1, 1)).getUTCDay();
-  const days = Number(to.slice(8, 10));
+  const days = Number(lastDayOfMonth(month).slice(8, 10));
   const cells: (string | null)[] = [
     ...Array.from({ length: firstWd }, () => null),
     ...Array.from({ length: days }, (_, i) => `${month}-${String(i + 1).padStart(2, '0')}`),
   ];
-  const dayRaces = byDate.get(selected) ?? [];
 
   return (
     <FlatList
+      testID="race-calendar"
       data={dayRaces}
       keyExtractor={(r) => r.id}
       contentContainerStyle={{ padding: 16, gap: 10 }}
+      onEndReached={() => {
+        if (day.hasNextPage && !day.isFetchingNextPage) void day.fetchNextPage();
+      }}
       ListHeaderComponent={
         <View style={{ gap: 10, marginBottom: 6 }}>
           <Row style={{ justifyContent: 'space-between' }}>
@@ -213,15 +212,15 @@ function RaceCalendar() {
               small
               kind="ghost"
               label="‹"
-              disabled={month <= minMonth}
+              disabled={month <= range.min}
               onPress={() => setMonth(monthShift(month, -1))}
             />
-            <T variant="h2">{formatMonthHeader(from)}</T>
+            <T variant="h2">{formatMonthHeader(`${month}-01`)}</T>
             <Button
               small
               kind="ghost"
               label="›"
-              disabled={month >= maxMonth}
+              disabled={month >= range.max}
               onPress={() => setMonth(monthShift(month, 1))}
             />
           </Row>
@@ -237,16 +236,20 @@ function RaceCalendar() {
               </View>
             ))}
             {cells.map((date, i) => {
-              const count = date ? (byDate.get(date)?.length ?? 0) : 0;
+              const cell = date ? calendarCell(date, counts.get(date) ?? 0, today) : null;
               const on = date === selected;
               return (
                 <Pressable
                   key={date ?? `e-${i}`}
+                  testID={date ? `cal-${date}` : undefined}
+                  accessibilityLabel={
+                    date && cell?.label ? `${date} 대회 ${cell.label}개` : (date ?? undefined)
+                  }
                   disabled={!date}
                   onPress={() => date && setSelected(date)}
                   style={{ width: `${100 / 7}%`, alignItems: 'center', paddingVertical: 6 }}
                 >
-                  {date ? (
+                  {date && cell ? (
                     <View
                       style={{
                         alignItems: 'center',
@@ -255,13 +258,14 @@ function RaceCalendar() {
                         paddingHorizontal: 6,
                         paddingVertical: 2,
                         backgroundColor: on ? c.primarySoft : 'transparent',
+                        opacity: cell.past ? 0.45 : 1,
                       }}
                     >
-                      <T variant="caption" color={date === today ? c.primary : undefined}>
+                      <T variant="caption" color={cell.isToday ? c.primary : undefined}>
                         {Number(date.slice(8))}
                       </T>
-                      <T variant="small" color={c.primary}>
-                        {count ? (count > 9 ? '●9+' : `●${count}`) : ' '}
+                      <T variant="small" color={cell.past ? c.subtext : c.primary}>
+                        {cell.label ? `●${cell.label}` : ' '}
                       </T>
                     </View>
                   ) : null}
@@ -269,18 +273,27 @@ function RaceCalendar() {
               );
             })}
           </View>
-          <T variant="bodyStrong">{formatDate(selected)}</T>
-          {q.isPending ? <SkeletonCards count={2} /> : null}
-          {q.isError ? (
+          {cal.isError ? (
             <ErrorState
               compact
-              message={screenErrorMessage(q.error)}
-              onRetry={() => void q.refetch()}
+              message={screenErrorMessage(cal.error)}
+              onRetry={() => void cal.refetch()}
+            />
+          ) : null}
+          <T variant="bodyStrong">{formatDate(selected)}</T>
+          {day.isPending ? <SkeletonCards count={2} /> : null}
+          {day.isError ? (
+            <ErrorState
+              compact
+              message={screenErrorMessage(day.error)}
+              onRetry={() => void day.refetch()}
             />
           ) : null}
         </View>
       }
-      ListEmptyComponent={q.isSuccess ? <EmptyState message="이 날은 대회가 없어요" /> : undefined}
+      ListEmptyComponent={
+        day.isSuccess ? <EmptyState message="이 날은 대회가 없어요" /> : undefined
+      }
       renderItem={({ item }) => (
         <RaceCard race={item} onPress={() => router.push(`/races/${item.id}`)} />
       )}
@@ -291,10 +304,14 @@ function RaceCalendar() {
 /** S-020 대회 캘린더/리스트 (PRD 6.9) */
 export default function Races() {
   const c = useTheme();
-  const { view, setView, load, loaded } = useRaceFilters();
+  const { view, setView, load, loaded, filters } = useRaceFilters();
   useEffect(() => {
     void load();
   }, [load]);
+  const filterCount = filterChips(filters).length;
+  useEffect(() => {
+    if (loaded) analytics.track('race_list_viewed', { view, filter_count: filterCount });
+  }, [loaded, view, filterCount]);
   return (
     <View style={{ flex: 1, backgroundColor: c.bg, gap: 10 }}>
       <SearchBar />

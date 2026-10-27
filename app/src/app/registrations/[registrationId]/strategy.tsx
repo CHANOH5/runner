@@ -120,6 +120,7 @@ export default function StrategyScreen() {
               p={p}
               timeLimitMin={event?.timeLimitMin ?? null}
               onRepredict={repredict}
+              source="registration"
             />
             <PaceStrategy
               bases={view.bases}

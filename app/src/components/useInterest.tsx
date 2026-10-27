@@ -6,6 +6,7 @@ import { errorMessage } from '../api/messages';
 import { toast } from '../stores/toast';
 import { PushPermissionSheet, shouldShowPushSheet } from './PushPrompt';
 import { useConfirm } from './useConfirm';
+import { analytics } from '../lib/analyticsClient';
 
 /**
  * 관심 대회 토글 (F-013, PRD 4.8): 낙관적 업데이트 → 실패하면 되돌리고 토스트.
@@ -13,7 +14,7 @@ import { useConfirm } from './useConfirm';
  */
 export function useInterest(
   race: { id: string; my: { interested: boolean; registered: boolean } },
-  opts: { onTurnedOff?: () => void } = {},
+  opts: { onTurnedOff?: () => void; source?: string } = {},
 ) {
   const qc = useQueryClient();
   const [interested, setInterested] = useState(race.my.interested);
@@ -44,6 +45,11 @@ export function useInterest(
     try {
       if (next) {
         const res = await api.interestOn(race.id);
+        analytics.track('interest_toggled', {
+          race_id: race.id,
+          on: true,
+          source: opts.source ?? 'card',
+        });
         toast(
           res.notifyRegistrationOpen
             ? '관심 대회에 추가했어요. 접수 오픈 전에 알려드릴게요'
@@ -52,6 +58,11 @@ export function useInterest(
         if (await shouldShowPushSheet()) setPushSheet(true);
       } else {
         await api.interestOff(race.id);
+        analytics.track('interest_toggled', {
+          race_id: race.id,
+          on: false,
+          source: opts.source ?? 'card',
+        });
         opts.onTurnedOff?.();
       }
       refresh();

@@ -105,7 +105,8 @@ pnpm dev:admin       # API http://localhost:3000 + 관리자 웹 http://localhos
 - **2단계 인증 코드**: 다른 터미널에서 `pnpm dev:admin-totp` → 6자리 코드(30초 유효). 개발용 TOTP 시드 비밀값은 시드 파일에 고정되어 있어 인증 앱에 등록하지 않아도 된다.
 - 개발용 계정 시드와 TOTP 스크립트는 `NODE_ENV=production`이면 에러로 멈춘다. 운영에서 동작하는 로그인 우회는 없다.
 - 관리자 웹은 같은 출처의 `/api/admin/*`를 API로 프록시한다 (`next.config.ts` rewrites, API 주소를 바꾸려면 `ADMIN_API_ORIGIN`). 세션 쿠키·CSRF는 관리자 API 그대로다.
-- 화면: 로그인(A-001), 대시보드(A-002, API가 있는 대회·제보 수만), 대회 목록·등록·수정(A-003), 오류 제보(A-004), 공지·푸시(A-008, 자리만).
+- 화면: 로그인(A-001), 대시보드(A-002, API가 있는 대회·제보 수만), 대회 목록·등록·수정(A-003), 오류 제보(A-004), 공지·푸시(A-008: 작성·미리보기·예약·테스트 발송·승인·발송 결과·내리기, T-030).
+- 공지 발송은 알림 워커가 한다: 다른 터미널에서 `pnpm --filter @berun/server worker` (`PUSH_DRY_RUN=true`면 Expo로 보내지 않고 로그만). 예약 시각(또는 즉시 공지는 승인 후 1분 안)에 게시·발송된다.
 - 대회 폼 빠른 입력: 날짜 `20270315`·`0315`, 시각 `1000`·`9`, 종목 프리셋(하프+풀 등), 공통값 적용, `⌘/Ctrl+S` 저장, `⌘/Ctrl+Enter` 저장하고 새 대회(지역·종류 유지), 새 대회 30초 임시 저장, 복제.
 
 관리자 API만 직접 부를 때: `POST /api/admin/v1/auth/login` → `{ mfaToken }` → `POST /auth/mfa { mfaToken, totp }` → 세션 쿠키 + `csrfToken`. 쓰기 요청에는 `X-CSRF-Token`, 대회 수정에는 `If-Match: {updatedAt}`.
@@ -127,6 +128,10 @@ pnpm dev:app         # API http://localhost:3000 + 앱(웹) http://localhost:808
 - **웹에서 안 되는 것** (웹용 대체 구현): 토큰 저장은 SecureStore 대신 localStorage, 푸시 알림 권한·토큰 등록 없음(권한은 항상 '미결정'으로 보여 안내 화면만 확인), 지도는 자리 표시(D-008 확정 전, 네이티브도 같음), [길찾기]는 지도 앱 대신 네이버·Google 지도 웹, 인앱 브라우저 대신 새 탭.
 - 실제 기기·시뮬레이터: Development Build 설정(`app/app.json`, `app/eas.json`)만 있고 빌드는 아직 하지 않았다. 빌드 후 `pnpm --filter @berun/app start`(dev client)로 붙고, API 주소는 `EXPO_PUBLIC_API_BASE_URL`로 준다 (실기기는 Mac의 LAN IP).
 - 앱 구조·테스트: `app/README.md`
+
+### 제품 분석 (PostHog, T-030)
+
+키가 없으면 앱·관리자 웹 모두 아무것도 보내지 않는다. 켜려면 `app/.env.local`에 `EXPO_PUBLIC_POSTHOG_KEY`·`EXPO_PUBLIC_POSTHOG_HOST`, `admin/.env.local`에 `NEXT_PUBLIC_POSTHOG_KEY`·`NEXT_PUBLIC_POSTHOG_HOST` (실제 키는 커밋하지 않는다). 이벤트 목록·개인정보 규칙: `docs/tech/07-analytics.md`.
 
 ## 스크립트 (루트)
 

@@ -74,7 +74,12 @@ export default function PredictionScreen() {
         <T variant="h2" testID="prediction-title">
           {predictionTitle(p)}
         </T>
-        <PredictionBody p={p} timeLimitMin={null} onRepredict={isPreview ? undefined : repredict} />
+        <PredictionBody
+          p={p}
+          timeLimitMin={null}
+          onRepredict={isPreview ? undefined : repredict}
+          source={isPreview ? 'preview' : 'prediction'}
+        />
         <PaceStrategy
           bases={['prediction']}
           defaultBasis="prediction"

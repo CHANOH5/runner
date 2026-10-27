@@ -7,6 +7,9 @@ export type SignupDraft = {
   /** S-003에서 고른 약관 id (S-004 완료 시 함께 보낸다, PRD 4.2) */
   agreedTermIds: string[];
   marketing: boolean;
+  /** 분석용 (signup_completed): 로그인을 시작한 provider와 시각 */
+  provider?: 'kakao' | 'apple' | 'google';
+  startedAt?: number;
 };
 
 type SessionState = {

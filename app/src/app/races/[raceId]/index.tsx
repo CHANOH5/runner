@@ -2,8 +2,8 @@ import type { RaceDetail, RaceEvent } from '@berun/shared';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import * as Clipboard from 'expo-clipboard';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
-import { useCallback, useState } from 'react';
-import { View } from 'react-native';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Platform, View } from 'react-native';
 import { api } from '../../../api';
 import { isApiError } from '../../../api/client';
 import { saveErrorMessage } from '../../../api/messages';
@@ -63,6 +63,7 @@ import { availableMapApps, MAP_APP_LABEL, openMapApp, type MapApp } from '../../
 import { toast } from '../../../stores/toast';
 import { useTheme } from '../../../theme';
 import { goBack } from '../../../lib/nav';
+import { analytics } from '../../../lib/analyticsClient';
 
 const TBD = '미정 · 공식 홈페이지 확인';
 
@@ -175,6 +176,18 @@ export default function RaceDetailScreen() {
   const [promptSaving, setPromptSaving] = useState(false);
   const [mapApps, setMapApps] = useState<MapApp[] | null>(null);
 
+  // race_viewed: 화면을 열 때 한 번 (PRD 2.3)
+  const viewed = useRef(false);
+  useEffect(() => {
+    if (!q.data || viewed.current) return;
+    viewed.current = true;
+    analytics.track('race_viewed', {
+      race_id: q.data.id,
+      registration_status: q.data.my.registration?.entryStatus ?? 'none',
+      source: 'race_detail',
+    });
+  }, [q.data]);
+
   // 공식 링크에서 돌아오면: 최신 상태로 다시 읽고 조건을 확인한다 (PRD 4.10.1)
   const onReturn = useCallback(
     async (stayMs: number) => {
@@ -195,6 +208,10 @@ export default function RaceDetailScreen() {
         })
       ) {
         setReturnPrompt(true);
+        analytics.track('entry_prompt_shown', {
+          race_id: raceId,
+          has_registration: !!fresh.my.registration,
+        });
       }
     },
     [qc, raceId],
@@ -242,8 +259,9 @@ export default function RaceDetailScreen() {
   const block = planBlockReason(race);
   const dDay = formatDDay(race.dDay);
 
-  const answerPrompt = async (done: boolean) => {
-    if (!done) {
+  const answerPrompt = async (answer: 'registered' | 'not_yet' | 'dismissed') => {
+    analytics.track('entry_prompt_answered', { race_id: raceId, answer });
+    if (answer !== 'registered') {
       setReturnPrompt(false);
       await savePromptDismissed(raceId);
       return;
@@ -264,6 +282,12 @@ export default function RaceDetailScreen() {
         entryStatusSource: 'return_prompt',
       });
       await savePromptSettled(raceId);
+      analytics.track('entry_status_changed', {
+        race_id: raceId,
+        from: reg.entryStatus,
+        to: 'registered',
+        source: 'return_prompt',
+      });
       toast('접수 완료로 기록했어요');
       setReturnPrompt(false);
       invalidateRegistrationQueries(qc, raceId);
@@ -411,7 +435,14 @@ export default function RaceDetailScreen() {
                 kind="secondary"
                 label="공식 홈페이지"
                 style={{ flex: 1 }}
-                onPress={() => void openTracked(race.officialUrl!)}
+                onPress={() => {
+                  analytics.track('external_link_opened', {
+                    race_id: race.id,
+                    link_type: 'official',
+                    registration_state: race.registrationState,
+                  });
+                  void openTracked(race.officialUrl!);
+                }}
               />
             ) : null}
             {race.registrationUrl ? (
@@ -420,7 +451,14 @@ export default function RaceDetailScreen() {
                 kind={race.registrationState === 'open' ? 'primary' : 'secondary'}
                 label="접수하러 가기"
                 style={{ flex: 1 }}
-                onPress={() => void openTracked(race.registrationUrl!)}
+                onPress={() => {
+                  analytics.track('external_link_opened', {
+                    race_id: race.id,
+                    link_type: 'registration',
+                    registration_state: race.registrationState,
+                  });
+                  void openTracked(race.registrationUrl!);
+                }}
               />
             ) : null}
           </Row>
@@ -458,7 +496,7 @@ export default function RaceDetailScreen() {
 
       <Sheet
         visible={returnPrompt}
-        onClose={() => void answerPrompt(false)}
+        onClose={() => void answerPrompt('dismissed')}
         title="접수 완료했나요?"
         testID="return-prompt"
       >
@@ -467,9 +505,9 @@ export default function RaceDetailScreen() {
           testID="return-prompt-done"
           label="접수 완료했어요"
           loading={promptSaving}
-          onPress={() => void answerPrompt(true)}
+          onPress={() => void answerPrompt('registered')}
         />
-        <Button kind="ghost" label="아직이에요" onPress={() => void answerPrompt(false)} />
+        <Button kind="ghost" label="아직이에요" onPress={() => void answerPrompt('not_yet')} />
       </Sheet>
 
       <Sheet visible={mapApps !== null} onClose={() => setMapApps(null)} title="길찾기">
@@ -480,6 +518,10 @@ export default function RaceDetailScreen() {
             selected={false}
             onPress={() => {
               setMapApps(null);
+              analytics.track('directions_opened', {
+                race_id: race.id,
+                app: Platform.OS === 'web' ? 'web' : app,
+              });
               void openMapApp(app, race.venue);
             }}
           />
@@ -493,10 +535,13 @@ export default function RaceDetailScreen() {
 function BottomBar({ race, block }: { race: RaceDetail; block: 'cancelled' | 'ended' | null }) {
   const router = useRouter();
   const reg = race.my.registration;
-  const { interested, toggle, elements } = useInterest({
-    id: race.id,
-    my: { interested: race.my.interested, registered: !!reg },
-  });
+  const { interested, toggle, elements } = useInterest(
+    {
+      id: race.id,
+      my: { interested: race.my.interested, registered: !!reg },
+    },
+    { source: 'race_detail' },
+  );
   const label = reg
     ? block === 'ended'
       ? '참가한 대회'
