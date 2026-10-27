@@ -1,14 +1,17 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:crypto';
 
-/** 저장용 대칭 암호화 (AES-256-GCM). 형식: iv(12) | tag(16) | ciphertext. 운영은 KMS 데이터 키로 바꾼다. */
+/**
+ * 저장용 대칭 암호화 (AES-256-GCM). 형식: iv(12) | tag(16) | ciphertext.
+ * 키는 로컬·테스트는 TOKEN_ENC_KEY, 운영은 KMS로 암호화된 데이터 키를 시작할 때 한 번 풀어 쓴다 (token-key.ts).
+ */
 export type TokenCipher = {
   encrypt: (plain: string) => Buffer;
   decrypt: (data: Buffer) => string;
 };
 
-export function createTokenCipher(keyBase64: string): TokenCipher {
-  const key = Buffer.from(keyBase64, 'base64');
-  if (key.length !== 32) throw new Error('TOKEN_ENC_KEY must be 32 bytes');
+export function createTokenCipher(keyBase64: string | Buffer): TokenCipher {
+  const key = typeof keyBase64 === 'string' ? Buffer.from(keyBase64, 'base64') : keyBase64;
+  if (key.length !== 32) throw new Error('token encryption key must be 32 bytes');
   return {
     encrypt(plain) {
       const iv = randomBytes(12);

@@ -91,5 +91,54 @@ jobs:
         run: pnpm db:seed
 
       # 통합 테스트는 berun_test를 비우고 마이그레이션을 처음부터 다시 적용한다 (server/test/global-setup.ts)
+      # infra 스냅숏·규칙 테스트도 여기서 돈다 (aws-cdk-lib/assertions, AWS 호출 없음)
       - name: Test
         run: pnpm test
+
+      # (T-029) CDK 템플릿 생성만 확인한다. 배포·bootstrap 없음, AWS 자격 증명 없음
+      - name: CDK synth
+        run: pnpm --filter @berun/infra synth
+        env:
+          CDK_DISABLE_VERSION_CHECK: 'true'
+          AWS_EC2_METADATA_DISABLED: 'true'
+
+  # (T-029) 운영 이미지가 빌드되는지만 확인한다. 레지스트리에 올리지 않는다 (push 없음, 자격 증명 없음)
+  docker:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      matrix:
+        image: [server, admin]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build ${{ matrix.image }} image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.image }}/Dockerfile
+          push: false
+          tags: berun-${{ matrix.image }}:ci
+          cache-from: type=gha,scope=${{ matrix.image }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.image }}
+
+  # (T-029, D-022) 서버 1대 운영 구성: compose·Caddy 설정과 운영 스크립트 문법만 확인한다 (기동·배포 없음)
+  deploy-config:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compose config
+        working-directory: deploy
+        run: |
+          sed -e 's/^POSTGRES_PASSWORD=$/POSTGRES_PASSWORD=ci/' -e 's/^REDIS_PASSWORD=$/REDIS_PASSWORD=ci/' \
+              -e 's/^ACME_EMAIL=$/ACME_EMAIL=ci@example.com/' .env.example > "$RUNNER_TEMP/.env"
+          touch "$RUNNER_TEMP/.env.app"
+          APP_ENV_FILE="$RUNNER_TEMP/.env.app" docker compose --env-file "$RUNNER_TEMP/.env" -f compose.prod.yml config --quiet
+      - name: Caddyfile
+        run: |
+          docker run --rm -v "$PWD/deploy/Caddyfile:/etc/caddy/Caddyfile:ro" \
+            -e API_HOST=api.example.com -e ADMIN_HOST=admin.example.com -e ACME_EMAIL=ci@example.com \
+            -e ADMIN_ALLOW_CIDRS=192.0.2.1/32 caddy:2.10-alpine caddy validate --config /etc/caddy/Caddyfile
+      - name: Shell scripts
+        run: shellcheck -x deploy/scripts/*.sh

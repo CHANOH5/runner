@@ -30,11 +30,12 @@ export async function adminLoginFlow(
   ctx: TestContext,
   email: string,
   secret: string,
+  password = PASSWORD,
 ): Promise<AdminSession> {
   const login = await ctx.app.inject({
     method: 'POST',
     url: '/api/admin/v1/auth/login',
-    payload: { email, password: PASSWORD },
+    payload: { email, password },
   });
   const { mfaToken } = login.json<{ mfaToken: string }>();
   const mfa = await ctx.app.inject({

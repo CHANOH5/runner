@@ -69,7 +69,7 @@ export async function createTestContext(
     redisUrl: overrides.redisUrl ?? TEST_REDIS_URL,
     jwtPublicKey: await exportSPKI(publicKey),
     jwtPrivateKey: await exportPKCS8(privateKey),
-    tokenEncKey: randomBytes(32).toString('base64'),
+    tokenKey: { kind: 'env', keyBase64: randomBytes(32).toString('base64') },
     social: { kakao: null, google: null, apple: null },
     push: { dryRun: true, expoAccessToken: undefined, ratePerSec: 600 },
     unlink: { dryRun: true, kakaoAdminKey: undefined },

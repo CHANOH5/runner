@@ -2,9 +2,12 @@ import { Redis } from 'ioredis';
 import { buildApp } from './app.js';
 import { loadConfig } from './config/env.js';
 import { createDb } from './db/client.js';
+import { loadTokenCipher } from './lib/token-key.js';
 import { createNotificationQueue, enqueueRaceUpdated } from './worker/queue.js';
 
 const config = loadConfig();
+// 운영은 KMS로 데이터 키를 한 번 푼다 (실패하면 시작하지 않는다)
+const cipher = await loadTokenCipher(config.tokenKey);
 const { db, client } = createDb(config.databaseUrl);
 const redis = new Redis(config.redisUrl, { lazyConnect: true, maxRetriesPerRequest: 2 });
 await redis.connect();
@@ -16,6 +19,7 @@ const app = await buildApp({
   config,
   db,
   redis,
+  cipher,
   raceUpdates: {
     raceUpdated: async (job) => {
       await enqueueRaceUpdated(notificationQueue, job);

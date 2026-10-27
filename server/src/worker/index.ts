@@ -12,7 +12,7 @@ import {
   dryRunPushClient,
   expoPushClient,
 } from '../modules/notifications/push.js';
-import { createTokenCipher } from '../lib/crypto.js';
+import { loadTokenCipher } from '../lib/token-key.js';
 import { dryRunUnlinkClient, httpUnlinkClient } from '../modules/auth/unlink-clients.js';
 import { fakeEmailDormancyChannel, pushDormancyChannel } from '../modules/users/dormancy.js';
 import { createAccountsQueue, createAccountsWorker, scheduleAccountJobs } from './accounts.js';
@@ -47,7 +47,7 @@ const unlinkDeps = {
   client: config.unlink.dryRun
     ? dryRunUnlinkClient
     : httpUnlinkClient({ kakaoAdminKey: config.unlink.kakaoAdminKey, apple: config.social.apple }),
-  cipher: config.tokenEncKey ? createTokenCipher(config.tokenEncKey) : null,
+  cipher: await loadTokenCipher(config.tokenKey),
   clock: () => new Date(),
   log,
   // 휴면 안내: 앱 푸시(알림 워커와 같은 클라이언트) + 이메일 자리(아직 발송 수단 없음)

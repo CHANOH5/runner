@@ -14,6 +14,10 @@ const BASE_ENV = {
   REDIS_URL: 'redis://localhost:56379',
 };
 const NO_SOCIAL = { kakao: null, google: null, apple: null };
+/** 운영은 KMS 데이터 키가 필수 (T-029). 값은 형식만 맞춘 가짜 */
+const PROD_KEY = {
+  TOKEN_ENC_KEY_KMS_CIPHERTEXT: Buffer.from('fake-ciphertext').toString('base64'),
+};
 
 describe('DEV_LOGIN 설정', () => {
   it('기본은 꺼짐, development에서 true면 켜짐', () => {
@@ -24,12 +28,12 @@ describe('DEV_LOGIN 설정', () => {
   });
 
   it('production에서 켜면 설정 검증 실패', () => {
-    expect(() => loadConfig({ ...BASE_ENV, NODE_ENV: 'production', DEV_LOGIN: 'true' })).toThrow(
-      ConfigError,
-    );
-    expect(loadConfig({ ...BASE_ENV, NODE_ENV: 'production', DEV_LOGIN: 'false' }).devLogin).toBe(
-      false,
-    );
+    expect(() =>
+      loadConfig({ ...BASE_ENV, ...PROD_KEY, NODE_ENV: 'production', DEV_LOGIN: 'true' }),
+    ).toThrow(ConfigError);
+    expect(
+      loadConfig({ ...BASE_ENV, ...PROD_KEY, NODE_ENV: 'production', DEV_LOGIN: 'false' }).devLogin,
+    ).toBe(false);
   });
 
   it('설정을 직접 만들어도 production + devLogin이면 verifier를 만들지 않는다', () => {

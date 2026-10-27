@@ -8,3 +8,5 @@ server/src/db/migrations/meta/
 admin/next-env.d.ts
 app/.expo/
 app/expo-env.d.ts
+cdk.out/
+infra/test/__snapshots__/

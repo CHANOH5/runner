@@ -9,6 +9,8 @@ const API_ORIGIN = process.env.ADMIN_API_ORIGIN ?? 'http://localhost:3000';
 
 const config: NextConfig = {
   reactStrictMode: true,
+  // 운영 이미지(admin/Dockerfile)만 standalone 서버로 빌드한다 — 로컬 `next start`에는 영향 없음
+  ...(process.env.NEXT_OUTPUT_STANDALONE === '1' && { output: 'standalone' as const }),
   poweredByHeader: false,
   // pnpm 워크스페이스 루트 기준으로 추적 (lockfile 경고 방지)
   outputFileTracingRoot: path.join(import.meta.dirname, '..'),

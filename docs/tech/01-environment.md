@@ -35,7 +35,7 @@
 | 클라우드 | AWS 서울 리전 (ap-northeast-2) — 국내 사용자 지연 시간, 개인정보 국내 보관 |
 | 환경 분리 | `local` / `dev` / `staging` / `prod` — prod 데이터는 다른 환경으로 복사하지 않는다 |
 | 도메인 (가칭) | `api.berun.app`, `live.berun.app`(응원 웹), `admin.berun.app` [미정] |
-| 배포 | 서버: GitHub Actions → ECS Fargate / 앱: EAS Build → TestFlight, Play 내부 테스트 |
+| 배포 | 서버·관리자 웹: Docker 이미지 → ECR → **서버 1대(EC2 t4g.small)의 Docker Compose** (D-022, `deploy/`, `infra/` `Berun-Single`). 사용자가 `07-deploy.md` 순서로 직접 배포, CI는 검증만. ECS Fargate는 확장 단계 / 앱: EAS Build → TestFlight, Play 내부 테스트 |
 | 앱 업데이트 | JS 변경은 EAS Update(OTA), 네이티브 변경은 스토어 배포 |
 
 ## 3. 트래픽 가정 (설계 기준)
@@ -70,7 +70,7 @@
 | 테스트 | Vitest. 통합 테스트는 로컬 테스트 DB·Redis 사용 (README). 관리자 웹은 Testing Library + jsdom (API는 가짜 fetch). 모바일 앱은 Jest(jest-expo) + React Native Testing Library (API는 가짜) |
 | 로컬 포트 | API 3000, 관리자 웹 3100 (`pnpm dev:admin`), 모바일 앱 웹 8081 (`pnpm dev:app` — Expo 웹, `/v1`은 Metro가 API로 프록시) |
 | 앱 로컬 확인 | Xcode·Android SDK 없이 Expo 웹(react-native-web)으로 확인한다. 로그인은 개발 전용 로그인(`DEV_LOGIN=true`, 비운영만, tech/03 8장). 실기기·시뮬레이터는 Development Build(`app/eas.json`) — 아직 빌드하지 않음 |
-| CI | GitHub Actions `.github/workflows/ci.yml` — push·PR마다 install → lint → typecheck → build → (PostGIS·Redis 서비스 컨테이너, 로컬과 같은 이미지·포트) 테스트 DB 생성 → migrate → seed → test. Node는 `.nvmrc`(22). 비밀값·배포·외부 호출 없음 (관리자 웹 빌드는 `NEXT_TELEMETRY_DISABLED=1`) |
+| CI | GitHub Actions `.github/workflows/ci.yml` — push·PR마다 install → lint → typecheck → build → (PostGIS·Redis 서비스 컨테이너, 로컬과 같은 이미지·포트) 테스트 DB 생성 → migrate → seed → test → `cdk synth`, 별도 작업으로 server·admin Docker 이미지 빌드(push 없음)와 운영 compose·Caddy 설정·스크립트 검사. Node는 `.nvmrc`(22). 비밀값·배포·외부 호출 없음 (관리자 웹 빌드는 `NEXT_TELEMETRY_DISABLED=1`) |
 
 ---
 ## 변경 이력
@@ -79,3 +79,5 @@
 - 2026-10-23: T-023 — CI 행 추가
 - 2026-10-23: T-024 — 관리자 웹(`admin/`) 저장소·테스트·로컬 포트·CI 원격 측정 끔
 - 2026-10-23: T-025 — 모바일 앱 로컬 포트 8081·웹 확인 방식·앱 테스트 (CI는 기존 lint·typecheck·test 단계에 포함)
+- 2026-10-27: T-029 — 배포 방식(ECR → ECS, 수동), CI에 `cdk synth`·Docker 빌드 검증
+- 2026-10-27: T-029 재작업(D-022) — 배포를 서버 1대 Docker Compose로, CI에 운영 compose 설정 검사
