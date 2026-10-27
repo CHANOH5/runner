@@ -35,6 +35,6 @@
 | T-026 | 서버: `GET /races/count`, `GET /races/calendar`, `GET /notices/{id}`, `app-config`의 `privacyPolicyUrl` (PRD v1.11) | 개발자 | 완료 | `server/`, `packages/shared` | main 병합. 테스트 서버 250 통과 |
 | T-027 | 앱: PRD v1.11 반영 (추천 대회 제목, 관심 해제 되돌리기 토스트, 처리방침 링크) | 개발자 | 완료 | `app/` | main 병합 (T-026 다음). 합친 상태 테스트 앱 85 통과 |
 | T-028 | 앱: PRD v1.12 달력 지난 날짜 (점·개수와 그날 목록을 '종료 포함'과 무관하게 표시) | 개발자 | 검토 | `app/` | 브랜치 `claude/app-t028` 검증 완료(앱 96 통과). 병합은 사용자가 나중에 |
-| T-029 | 운영 배포 준비: AWS 인프라 코드(CDK), staging·prod 환경, KMS, 운영 첫 관리자 생성 | 개발자 | 진행 | `infra/`, `server/` | 개발-서버 세션. **코드와 문서만, 실제 AWS 배포는 하지 않음** |
+| T-029 | 운영 배포 준비: **최소 구성(D-022)** — 서버 1대 Docker Compose, 백업, KMS, 운영 첫 관리자 생성. 기존 CDK는 확장 단계용으로 보관 | 개발자 | 진행 | `infra/`, `server/`, `docker/` | 개발-서버 세션. 1차(CDK staging·prod) 검증 후 비용 문제로 재작업. **실제 AWS 배포는 하지 않음** |
 | T-030 | 관리자 공지 작성·푸시(N-08) API·화면, 앱 PostHog 이벤트 연결 (D-017) | 개발자 | 진행 | `admin/`, `app/`, `server/` 공지 모듈 | 개발-앱 세션. T-028 브랜치 위에서 작업 |
 | T-031 | 약관 초안: 서비스 이용약관, 개인정보 처리방침, 마케팅 수신 동의, 위치기반서비스 이용약관(Phase 3) | 기획자 | 완료 | `planning/legal/` | 법률 검토 전 초안. `[확인 필요]` 39건. 개발자 handoff 1건 |
