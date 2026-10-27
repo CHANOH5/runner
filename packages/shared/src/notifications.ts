@@ -50,3 +50,21 @@ export type MarkReadReq = z.infer<typeof MarkReadReq>;
 
 /** 앱 내 알림 보존 기간 (PRD 7.1, P-RET) */
 export const NOTIFICATION_RETENTION_DAYS = 90;
+
+/** GET /notices/{id} — 공지 상세 (tech/06 6.5, PRD 8.6). 내린 공지 410 NOTICE_WITHDRAWN */
+export const NoticeDetail = z.object({
+  id: Id,
+  kind: z.enum(['notice', 'marketing']),
+  /** marketing은 "(광고) " 포함 */
+  title: z.string(),
+  /** 일반 텍스트. 앱이 줄바꿈 유지·URL 자동 링크 */
+  body: z.string(),
+  publishedAt: DateTime,
+  /** 하단 이동 버튼. notice면 버튼 없음 */
+  link: z.discriminatedUnion('type', [
+    z.object({ type: z.literal('notice') }),
+    z.object({ type: z.literal('race'), raceId: Id }),
+    z.object({ type: z.literal('race_list') }),
+  ]),
+});
+export type NoticeDetail = z.infer<typeof NoticeDetail>;

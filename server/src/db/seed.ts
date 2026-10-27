@@ -12,6 +12,8 @@ import {
   adminUsers,
   appConfigs,
   authIdentities,
+  notices,
+  notifications,
   notificationSettings,
   privacySettings,
   raceEvents,
@@ -46,6 +48,10 @@ export const SEED_IDS = {
   eventIncheon10k: '0199f000-0000-7000-8000-000000000210',
   devRegistration: '0199f000-0000-7000-8000-000000000301',
   devRegistrationClosed: '0199f000-0000-7000-8000-000000000302',
+  noticeWelcome: '0199f000-0000-7000-8000-000000000501',
+  noticeWithdrawn: '0199f000-0000-7000-8000-000000000502',
+  devNoticeWelcome: '0199f000-0000-7000-8000-000000000511',
+  devNoticeWithdrawn: '0199f000-0000-7000-8000-000000000512',
 } as const;
 
 const TERMS = [
@@ -437,6 +443,57 @@ export async function seed(db: Db, now = new Date()): Promise<void> {
         })),
       )
       .onConflictDoNothing();
+
+    // 공지 (N-08): 관리자 공지 작성 API 전이라 시드로만 넣는다. 하나는 보낸 공지, 하나는 내린 공지(410 확인용)
+    const sentAt = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    const noticeSeeds = [
+      {
+        id: SEED_IDS.noticeWelcome,
+        title: '[개발] BeRun에 오신 걸 환영해요',
+        body: '관심 대회를 등록하면 접수 오픈·마감 전에 알려드려요.\n자세한 안내는 https://example.com/notice 에서 볼 수 있어요.',
+        linkType: 'race_list',
+        status: 'sent',
+        notificationId: SEED_IDS.devNoticeWelcome,
+      },
+      {
+        id: SEED_IDS.noticeWithdrawn,
+        title: '[개발] 내려간 공지',
+        body: '관리자가 내린 공지예요. 상세를 열면 "내려간 공지예요"가 보여야 해요.',
+        linkType: 'notice',
+        status: 'withdrawn',
+        notificationId: SEED_IDS.devNoticeWithdrawn,
+      },
+    ] as const;
+    for (const { notificationId, ...n } of noticeSeeds) {
+      await tx
+        .insert(notices)
+        .values({
+          ...n,
+          kind: 'notice',
+          createdBy: DEV_ADMIN.id,
+          approvedBy: DEV_ADMIN.id,
+          approvedAt: sentAt,
+        })
+        .onConflictDoNothing();
+      await tx
+        .insert(notifications)
+        .values({
+          id: notificationId,
+          userId: SEED_IDS.devUser,
+          noticeId: n.id,
+          kind: 'notice',
+          payload: {
+            title: n.title,
+            body: n.body.split('\n')[0],
+            deepLink: `berun://notices/${n.id}`,
+          },
+          scheduledAt: sentAt,
+          status: 'sent',
+          sentAt,
+          createdAt: sentAt,
+        })
+        .onConflictDoNothing();
+    }
   });
 }
 

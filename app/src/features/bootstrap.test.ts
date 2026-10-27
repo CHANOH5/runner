@@ -6,6 +6,7 @@ const cfg = (over: Partial<AppConfig> = {}): AppConfig => ({
   minNativeVersion: { ios: '1.0.0', android: '1.0.0' },
   maintenance: { active: false, until: null },
   supportEmail: null,
+  privacyPolicyUrl: null,
   ...over,
 });
 const me = (pendingTerms: Me['pendingTerms'] = []) => ({ pendingTerms }) as Me;

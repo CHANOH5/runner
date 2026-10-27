@@ -92,36 +92,75 @@ export type FeeBucket = z.infer<typeof FeeBucket>;
 /** 기간 필터 최대 범위 (PRD 4.6) */
 export const RACE_LIST_MAX_RANGE_MONTHS = 12;
 
-/** GET /races 쿼리 (tech/06 6.4). 배열은 반복 키 */
-export const RaceListQuery = PageQuery.extend({
-  q: z.string().trim().min(1).max(30).optional(),
+/** 목록·개수·달력이 같이 쓰는 필터 (tech/06 6.4). 배열은 반복 키 */
+const raceFilterFields = {
   region: arrayParam(RegionCode).optional(),
-  from: DateStr.optional(),
-  to: DateStr.optional(),
-  date: DateStr.optional(),
   category: arrayParam(DistanceCategory).optional(),
   registrationState: arrayParam(z.enum(['upcoming', 'open', 'closed', 'unscheduled'])).optional(),
   fee: arrayParam(FeeBucket).optional(),
   includeEnded: boolParam.default(false),
   hideCancelled: boolParam.default(false),
-}).superRefine((v, ctx) => {
-  if (v.from && v.to) {
-    if (v.from > v.to) {
-      ctx.addIssue({ code: 'custom', path: ['to'], params: { code: 'out_of_range' } });
-      return;
-    }
-    const [y, m, d] = v.from.split('-').map(Number) as [number, number, number];
-    const limit = new Date(Date.UTC(y, m - 1 + RACE_LIST_MAX_RANGE_MONTHS, d))
-      .toISOString()
-      .slice(0, 10);
-    if (v.to > limit) {
-      ctx.addIssue({ code: 'custom', path: ['to'], params: { code: 'out_of_range' } });
-    }
+};
+const raceRangeFields = {
+  q: z.string().trim().min(1).max(30).optional(),
+  from: DateStr.optional(),
+  to: DateStr.optional(),
+  date: DateStr.optional(),
+};
+
+/** from~to 최대 12개월 */
+function checkRange(
+  v: { from?: string | undefined; to?: string | undefined },
+  ctx: z.RefinementCtx,
+) {
+  if (!v.from || !v.to) return;
+  if (v.from > v.to) {
+    ctx.addIssue({ code: 'custom', path: ['to'], params: { code: 'out_of_range' } });
+    return;
   }
-});
+  const [y, m, d] = v.from.split('-').map(Number) as [number, number, number];
+  const limit = new Date(Date.UTC(y, m - 1 + RACE_LIST_MAX_RANGE_MONTHS, d))
+    .toISOString()
+    .slice(0, 10);
+  if (v.to > limit) {
+    ctx.addIssue({ code: 'custom', path: ['to'], params: { code: 'out_of_range' } });
+  }
+}
+
+/** GET /races 쿼리 */
+export const RaceListQuery = PageQuery.extend({
+  ...raceRangeFields,
+  ...raceFilterFields,
+}).superRefine(checkRange);
 export type RaceListQuery = z.infer<typeof RaceListQuery>;
 
 export const RacePage = Page(RaceSummary);
+
+/** GET /races/count — 목록 쿼리에서 cursor·limit 제외 ("128개 대회 보기") */
+export const RaceCountQuery = z
+  .object({ ...raceRangeFields, ...raceFilterFields })
+  .superRefine(checkRange);
+export type RaceCountQuery = z.infer<typeof RaceCountQuery>;
+export const RaceCount = z.object({ count: z.number().int() });
+
+/**
+ * GET /races/calendar?month=2026-11 — 목록 필터 + 달. 검색어(q)와 기간(from·to·date)은 받지 않는다 (달이 기간).
+ * 달 범위: 오늘(KST) 기준 −1개월 ~ +12개월 (PRD 4.5), 밖이면 400
+ */
+export const RaceCalendarQuery = z.object({
+  month: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/),
+  ...raceFilterFields,
+});
+export type RaceCalendarQuery = z.infer<typeof RaceCalendarQuery>;
+export const RaceCalendar = z.object({
+  month: z.string(),
+  /** 대회 있는 날만, 날짜 순. 10개 이상 "9+"는 앱이 처리 */
+  days: z.array(z.object({ date: DateStr, count: z.number().int() })),
+});
+export type RaceCalendar = z.infer<typeof RaceCalendar>;
+/** 달력에서 볼 수 있는 달: 이번 달 −1 ~ +12 (PRD 4.5) */
+export const RACE_CALENDAR_MONTHS_BACK = 1;
+export const RACE_CALENDAR_MONTHS_AHEAD = 12;
 
 /** GET /me/races */
 export const MyRacesTab = z.enum(['interested', 'upcoming', 'past']);

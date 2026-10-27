@@ -58,7 +58,7 @@ curl -X POST localhost:3000/v1/me/predictions \
   -d '{"target":{"type":"distance","distanceM":21097},"recordIds":null}'
 ```
 
-시드 개발 사용자는 PRD 5.7 예시 1과 같은 10K 기록 3개와 `[개발] 한강 가을 하프마라톤` 하프 참가 등록(`0199f000-0000-7000-8000-000000000301`)을 갖고 있어, 하프 예측 결과가 2:03:22로 나온다.
+시드 개발 사용자는 PRD 5.7 예시 1과 같은 10K 기록 3개와 `[개발] 한강 가을 하프마라톤` 하프 참가 등록(`0199f000-0000-7000-8000-000000000301`)을 갖고 있어, 하프 예측 결과가 2:03:22로 나온다. 알림 목록에는 개발용 공지 2개(보낸 공지 `…0501`, 내린 공지 `…0502` → 상세가 410)가 있다.
 
 ### 구현된 API (T-016, T-018)
 
@@ -68,13 +68,13 @@ curl -X POST localhost:3000/v1/me/predictions \
 | 앱 설정 | `GET /v1/app-config` |
 | 인증·가입 | `POST /v1/auth/social`, `POST /v1/auth/signup`, `POST /v1/auth/signup/abort`, `POST /v1/auth/refresh`, `POST /v1/auth/logout`, `GET /v1/terms/current`, `GET /v1/nicknames/availability` |
 | 내 정보·설정 | `GET /v1/me`, `PATCH /v1/me/profile`, `GET·PATCH /v1/me/privacy`, `GET·PATCH /v1/me/notification-settings`, `GET·POST /v1/me/consents`, `PUT·DELETE /v1/me/device`, `DELETE /v1/me` (탈퇴) |
-| 대회 | `GET /v1/races`, `GET /v1/races/{raceId}`, `PUT·DELETE /v1/races/{raceId}/interest`, `POST /v1/races/{raceId}/reports` |
+| 대회 | `GET /v1/races`, `GET /v1/races/count`, `GET /v1/races/calendar`, `GET /v1/races/{raceId}`, `PUT·DELETE /v1/races/{raceId}/interest`, `POST /v1/races/{raceId}/reports` |
 | 참가 예정·접수 상태 | `POST /v1/races/{raceId}/registration`, `GET·PATCH·DELETE /v1/registrations/{id}`, `GET /v1/me/races?tab=` |
 | 홈 | `GET /v1/home/next-race`, `GET /v1/home/deadlines`, `GET /v1/home/recommended` |
 | 기록 | `GET·POST /v1/me/records`, `PATCH·DELETE /v1/me/records/{id}` |
 | 예측 | `POST /v1/me/predictions`, `POST /v1/me/predictions/preview`, `GET /v1/me/predictions/candidates`, `GET /v1/me/predictions`, `GET /v1/me/predictions/{id}`, `GET /v1/registrations/{id}/strategy` |
-| 알림 목록 | `GET /v1/me/notifications`, `GET /v1/me/notifications/unread-count`, `POST /v1/me/notifications/read` |
-| 관리자 (`/api/admin/v1`) | 인증 `POST /auth/login`·`/auth/mfa`·`/auth/logout`, `GET /auth/me` / 계정 `GET·POST /admins`, `PATCH /admins/{id}` / 대회 `GET·POST /races`, `GET·PUT·DELETE /races/{id}`, `POST /races/{id}/publish·unpublish·hide·clone`, `GET /races/duplicates`, `GET /races/{id}/impact` / 제보 `GET /reports`, `GET /reports/{id}`, `POST /reports/resolve` |
+| 알림 목록·공지 | `GET /v1/me/notifications`, `GET /v1/me/notifications/unread-count`, `POST /v1/me/notifications/read`, `GET /v1/notices/{id}` |
+| 관리자 (`/api/admin/v1`) | 인증 `POST /auth/login`·`/auth/mfa`·`/auth/logout`, `GET /auth/me` / 계정 `GET·POST /admins`, `PATCH /admins/{id}` / 대회 `GET·POST /races`, `GET·PUT·DELETE /races/{id}`, `POST /races/{id}/publish·unpublish·hide·clone`, `GET /races/duplicates`, `GET /races/{id}/impact` / 제보 `GET /reports`, `GET /reports/{id}`, `POST /reports/resolve` / 원격 설정 `GET /app-configs`, `PUT /app-configs/{key}` |
 
 - 공통: 약관 재동의 게이트(403 `TERMS_REQUIRED`), `X-App-Version`·`X-Platform`이 있으면 최소 버전 검사(426).
 - 소셜 로그인은 provider 키(`.env.example`의 `KAKAO_APP_ID` 등)가 있어야 동작한다. 키 없이 화면 흐름을 확인하려면 위 `dev:token`을 쓴다. 통합 테스트는 가짜 verifier를 쓴다.

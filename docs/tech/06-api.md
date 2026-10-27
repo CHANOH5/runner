@@ -330,6 +330,7 @@ z.object({
   minNativeVersion: z.object({ ios: z.string(), android: z.string() }),  // semver
   maintenance: z.object({ active: z.boolean(), until: DateTime.nullable() }),
   supportEmail: z.string().email().nullable(),                           // [미정] Q-12
+  privacyPolicyUrl: z.string().url().nullable(),                         // (T-026, PRD v1.11 4.2) 개인정보 처리방침. null이면 앱은 "개인정보 수집·이용 동의" 전문을 연다
 })
 ```
 - 다른 모든 API도 `X-App-Version` < 최소 버전이면 426 `UPGRADE_REQUIRED` (이중 방어).
@@ -523,6 +524,8 @@ z.object({
 // 404 NOT_FOUND: 없음 또는 draft
 // 410 RACE_UNAVAILABLE: hidden (관심·참가 예정자 포함 모두에게. 앱은 "더 이상 볼 수 없는 대회예요")
 ```
+- (T-026 구현) `/races`·`/races/count`·`/races/calendar`는 같은 필터 함수(`filterRaces`)를 쓴다. 개수 = 목록 전체 길이(커서 무시).
+- (T-026 구현) 달력은 목록 필터에서 `q`·`from`·`to`·`date`를 받지 않고(`month`가 기간), `race_date`(KST 날짜)로 센다. **기본 조건도 목록과 같아 오늘 이전 날짜는 `includeEnded=true`일 때만 센다** — 달력에서 날짜를 눌러 `GET /races?date=`로 받는 목록과 수가 맞도록. 지난 달(−1개월)을 보여줄 때 앱이 `includeEnded=true`를 보낸다. `month` 범위 밖 400 `fieldErrors: [{ path: 'month', code: 'out_of_range' }]`, 형식(`YYYY-MM`) 오류도 400.
 - `my.registration`(`RegistrationBrief`)에 `entryStatus`가 있어 S-022 내 참가 예정 카드·하단 바 접수 상태·복귀 질문 조건 ③을 판단한다. "아직 접수 전이에요 · 마감 {M.D HH:mm}"는 `registrationState = 'open'` + `registrationClosesAt`(유효 접수 기간)으로 앱이 그린다.
 - 대회장 지도: 앱은 `venue.lat/lng`가 있으면 미니 지도, 없으면 안내 박스 (PRD 4.7). 다크 모드에서도 기본(밝은) 지도 (PRD 4.7, 커스텀 다크 스타일은 Q-18).
 - [길찾기]·[지도 앱에서 검색]은 서버 호출 없이 앱이 URL 스킴으로 연다 (handoff 답변 2번).
@@ -790,6 +793,7 @@ z.object({
 // 410 NOTICE_WITHDRAWN: 관리자가 내린 공지 → 앱은 "내려간 공지예요" (S-011 목록의 해당 알림 행은 그대로 둔다)
 // 404 NOT_FOUND: 없음 또는 아직 발송 전(draft·approved 예약 대기)
 ```
+- (T-026 구현) `status = sent`만 200. `publishedAt` = 예약 시각, 없으면(즉시 공지) 승인 시각 (`notices`에 발송 시각 컬럼이 없다). `link_type = race`인데 대회가 지워져 `link_race_id`가 null이면 `{ type: 'notice' }`(버튼 없음). `Cache-Control: no-store` (내리면 바로 410). 관리자 공지 작성·발송 API(7.6)는 아직 없어 개발 데이터는 시드(보낸 공지 1, 내린 공지 1 + 개발 사용자 알림 행)로만 들어간다.
 - 푸시 페이로드(`data`): `{ notificationIds: string[], deepLink: string }`. 묶음 푸시는 `deepLink = berun://notifications` (PRD 7.3). 앱은 푸시 탭으로 열리면 해당 알림을 읽음 처리한다.
 
 ## 7. 관리자 API (`/api/admin/v1`)
@@ -797,7 +801,7 @@ z.object({
 > 권한: `O` owner, `P` operator, `V` viewer (PRD 8.1). 표에 없는 역할은 403.
 > 동시 수정 방지: 대회 수정은 `If-Match: {updatedAt}` 헤더 필수 → 다르면 409 `CONFLICT_STALE`.
 
-> **구현 (T-020)**: 7.1 인증·계정, 7.3 대회(지오코딩 제외), 7.5 제보. 7.2 대시보드·7.4 수집 후보·7.6 공지·7.7 원격 설정은 다음 작업.
+> **구현 (T-020)**: 7.1 인증·계정, 7.3 대회(지오코딩 제외), 7.5 제보. **(T-026)** 7.7 원격 설정. 7.2 대시보드·7.4 수집 후보·7.6 공지는 다음 작업.
 > - 세션: Redis `admin:sess:{hash}`, 쿠키 `berun_admin_session`(path `/api/admin`, httpOnly, SameSite=Strict, 운영은 Secure). 2단계 토큰 5분·5회. 잠금 중 로그인 → **429 `RATE_LIMITED`** (`details.lockedUntil`). 비활성 관리자는 다음 요청부터 401.
 > - CSRF 실패·역할 부족 → 403 `FORBIDDEN`. 감사 로그 `action`은 `{METHOD} {경로 패턴}` (로그인은 `login`, 로그아웃 `logout`), 응답 전에 기록.
 > - `POST /admins`: `{ email, role, password(12자 이상) }` → `{ admin, totpUri }` (TOTP 등록 URI는 이 응답에만). `PATCH /admins/{id}`: `{ role?, disabled? }` — 자기 비활성화·마지막 owner 강등은 400.
@@ -996,7 +1000,16 @@ const NoticeInput = z.object({
 | 메서드·경로 | 권한 | 설명 |
 |---|---|---|
 | `GET /app-configs` | OPV | `app_configs` 전체 |
-| `PUT /app-configs/{key}` | O | 최소 버전·점검 등 (`min_native_version_ios`, `min_native_version_android`, `maintenance`, `support_email`, `coverage_target`) |
+| `PUT /app-configs/{key}` | O | 최소 버전·점검 등 (`min_native_version_ios`, `min_native_version_android`, `maintenance`, `support_email`, `coverage_target`, `privacy_policy_url`) |
+
+```ts
+// (T-026 구현) GET /app-configs → z.array(z.object({ key, value: unknown, updatedAt: DateTime }))  (키 순)
+// PUT /app-configs/{key}  { value }  → 같은 형식 1개. 키별 값 형식 (@berun/shared APP_CONFIG_VALUES):
+//   min_native_version_ios·android: "1.2.3" / maintenance: { active, until: DateTime | null } / support_email: email | null
+//   coverage_target: int ≥ 0 | null / privacy_policy_url: http(s) URL | null
+// 허용하지 않는 키 → 400 (path key), 형식 오류 → 400 (path value, invalid_value). null은 "값 없음"(앱 설정에서 null)
+```
+- 감사 로그: `targetType = app_config`, `targetId = key`, `memo` = 새 값(JSON). 앱 `GET /app-config`는 CDN 5분, 서버 최소 버전 검사는 30초 캐시라 반영까지 시간이 걸릴 수 있다.
 
 ## 8. 요청 제한 (rate limit)
 
@@ -1093,3 +1106,4 @@ v1.1에서 PRD v1.2 대조 요청(handoff `20261021-planner-developer-api-v1-prd
 - 2026-10-23: T-023 — 알림 kind `dormancy_notice`, refresh 회전 = 접속·휴면 계정 refresh 거절
 - 2026-10-23: T-024 — `GET /auth/me` 응답에 `csrfToken` 추가
 - 2026-10-23: T-025 — 개발 전용 로그인(`dev:{이름}`, 비운영만) 메모. 앱은 미구현 API(`/races/count`·`/races/calendar`·`/notices/{id}`)를 목록·알림 본문으로 대체 중 (tech/03 9-0-2)
+- 2026-10-27: T-026 — `GET /races/count`·`GET /races/calendar`·`GET /notices/{id}` 구현 메모, `GET /app-config`에 `privacyPolicyUrl`, 관리자 `GET /app-configs`·`PUT /app-configs/{key}`(`privacy_policy_url` 포함) 구현
