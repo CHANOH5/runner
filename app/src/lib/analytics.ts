@@ -6,7 +6,7 @@ import type { DistanceCategory, EntryStatus, EntryStatusSource } from '@berun/sh
  *   보내기 직전에 금지 키·이메일·좌표처럼 보이는 값을 한 번 더 걸러낸다 (`sanitizeProps`).
  * - 키(`EXPO_PUBLIC_POSTHOG_KEY`)가 없으면 아무것도 보내지 않는다 (no-op). 개발·테스트 기본값.
  * - 전송은 PostHog capture HTTP API(`POST {host}/capture/`)를 직접 쓴다 — SDK 없이 웹 미리보기에서도 같은 코드.
- * 이벤트 목록: docs/tech/07-analytics.md
+ * 이벤트 목록: docs/tech/08-analytics.md
  */
 
 type Source<T extends string> = T;

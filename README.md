@@ -132,7 +132,7 @@ pnpm dev:app         # API http://localhost:3000 + 앱(웹) http://localhost:808
 
 ### 제품 분석 (PostHog, T-030)
 
-키가 없으면 앱·관리자 웹 모두 아무것도 보내지 않는다. 켜려면 `app/.env.local`에 `EXPO_PUBLIC_POSTHOG_KEY`·`EXPO_PUBLIC_POSTHOG_HOST`, `admin/.env.local`에 `NEXT_PUBLIC_POSTHOG_KEY`·`NEXT_PUBLIC_POSTHOG_HOST` (실제 키는 커밋하지 않는다). 이벤트 목록·개인정보 규칙: `docs/tech/07-analytics.md`.
+키가 없으면 앱·관리자 웹 모두 아무것도 보내지 않는다. 켜려면 `app/.env.local`에 `EXPO_PUBLIC_POSTHOG_KEY`·`EXPO_PUBLIC_POSTHOG_HOST`, `admin/.env.local`에 `NEXT_PUBLIC_POSTHOG_KEY`·`NEXT_PUBLIC_POSTHOG_HOST` (실제 키는 커밋하지 않는다). 이벤트 목록·개인정보 규칙: `docs/tech/08-analytics.md`.
 
 ## 스크립트 (루트)
 

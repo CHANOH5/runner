@@ -2,7 +2,7 @@
  * 관리자 웹 분석 (PostHog, D-017 · P-PRI-08). 앱(`app/src/lib/analytics.ts`)과 같은 규칙:
  * - 식별은 내부 관리자 id만. 이메일·이름·좌표·주소는 보내지 않는다 (허용 속성만 정의 + 보내기 직전 거름망)
  * - `NEXT_PUBLIC_POSTHOG_KEY`·`NEXT_PUBLIC_POSTHOG_HOST`가 없으면 no-op (개발·테스트 기본값)
- * 이벤트 목록: docs/tech/07-analytics.md
+ * 이벤트 목록: docs/tech/08-analytics.md
  */
 
 export type AdminAnalyticsEvents = {
