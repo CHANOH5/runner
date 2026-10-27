@@ -1,6 +1,7 @@
-# app/ (Expo)은 앱 작업(T-0xx)에서 package.json을 만들 때 여기에 추가한다.
+# app/ (Expo)은 T-025에서 추가 (D-005)
 packages:
   - server
+  - app
   - admin
   - packages/*
 
@@ -10,3 +11,6 @@ onlyBuiltDependencies:
 # bullmq의 선택적 네이티브 가속(msgpackr-extract). 없으면 순수 JS로 동작하므로 설치 스크립트를 돌리지 않는다
 ignoredBuiltDependencies:
   - msgpackr-extract
+  # 앱(Expo·Jest) 도구의 선택적 네이티브 빌드. 미리 빌드된 바이너리(optional dependency)를 쓰므로 설치 스크립트를 돌리지 않는다
+  - '@parcel/watcher'
+  - unrs-resolver

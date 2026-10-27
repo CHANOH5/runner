@@ -1,0 +1,51 @@
+{
+  "name": "@berun/app",
+  "version": "1.0.0",
+  "private": true,
+  "description": "BeRun 모바일 앱 (Expo, D-005)",
+  "main": "expo-router/entry",
+  "scripts": {
+    "dev": "expo start --web --port 8081",
+    "start": "expo start --dev-client",
+    "web": "expo start --web --port 8081",
+    "typecheck": "tsc --noEmit",
+    "test": "jest"
+  },
+  "dependencies": {
+    "@berun/shared": "workspace:*",
+    "@expo/metro-runtime": "~58.0.15",
+    "@react-native-async-storage/async-storage": "2.2.0",
+    "@tanstack/react-query": "^5.104.5",
+    "expo": "~58.0.17",
+    "expo-application": "~58.1.2",
+    "expo-clipboard": "~58.0.4",
+    "expo-constants": "~58.0.13",
+    "expo-crypto": "~58.0.7",
+    "expo-dev-client": "~58.0.14",
+    "expo-device": "~58.0.5",
+    "expo-linking": "~58.0.14",
+    "expo-notifications": "~58.1.6",
+    "expo-router": "~58.0.25",
+    "expo-secure-store": "~58.0.2",
+    "expo-status-bar": "~58.0.4",
+    "expo-system-ui": "~58.0.6",
+    "expo-web-browser": "~58.0.6",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "react-native": "0.88.0",
+    "react-native-safe-area-context": "~5.10.1",
+    "react-native-screens": "~4.30.0",
+    "react-native-web": "^0.21.4",
+    "zod": "^4.6.7",
+    "zustand": "^5.0.16"
+  },
+  "devDependencies": {
+    "@react-native/jest-preset": "^0.88.0",
+    "@testing-library/react-native": "^14.1.0",
+    "@types/jest": "^30.0.0",
+    "@types/react": "^19.3.0",
+    "jest": "^30.5.2",
+    "jest-expo": "^58.0.12",
+    "typescript": "~5.9.3"
+  }
+}

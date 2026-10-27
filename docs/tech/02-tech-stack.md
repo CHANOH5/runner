@@ -13,9 +13,9 @@
 | 영역 | 선택 | 대안 | 결정 |
 |---|---|---|---|
 | 앱 | **Expo (React Native) + TypeScript, Development Build** (Expo Go 미사용) | Flutter, 네이티브(Swift/Kotlin) | **D-005 확정** |
-| 앱 라우팅 | Expo Router | React Navigation | |
-| 앱 상태·서버 데이터 | TanStack Query + Zustand | Redux Toolkit | |
-| 앱 UI | 자체 디자인 시스템 + `react-native-reanimated` | Tamagui, NativeWind | [미정] |
+| 앱 라우팅 | Expo Router | React Navigation | T-025: Expo SDK 58 · RN 0.88 · React 19.3 · Expo Router 58 |
+| 앱 상태·서버 데이터 | TanStack Query + Zustand | Redux Toolkit | T-025 적용 |
+| 앱 UI | 자체 디자인 시스템 + `react-native-reanimated` | Tamagui, NativeWind | [미정] — T-025는 자체 기초 컴포넌트(`app/src/components/ui`)만, reanimated 미사용 |
 | 지도 | **네이버 지도** (`@mj-studio/react-native-naver-map`) — 앱 내부 `MapView` 래퍼로만 사용. Phase 1: 대회 상세의 대회장 위치 | Google Maps (`react-native-maps`) | **D-008 조건부 확정** (NCP 요금 확인 후 최종) |
 | 지오코딩 (관리자) | NCP Maps Geocoding API (관리자 웹 서버에서 호출, 대회장 주소 → 좌표) | 수동 입력 | D-008과 함께 |
 | 위치 | `expo-location` + `expo-task-manager` (백그라운드) | `react-native-background-geolocation` (유료, 더 안정적) | 실측 후 결정 |
@@ -25,7 +25,7 @@
 | ORM / 쿼리 | **Drizzle ORM** (PostGIS는 raw SQL 혼용) | Prisma, Kysely | |
 | 검증 | Zod 4 (앱·서버 스키마 공유, `packages/shared`). Fastify 연결은 `fastify-type-provider-zod` | | |
 | 로깅 | pino (Fastify 내장), 개발은 pino-pretty | | |
-| 테스트 | Vitest (단위 + 로컬 DB 통합) | Jest | |
+| 테스트 | Vitest (단위 + 로컬 DB 통합) | Jest | 앱만 **Jest(jest-expo) + React Native Testing Library** (Expo 공식 지원 경로, T-025) |
 | 인증 토큰 | `jose` (JWT ES256) | | |
 | DB | **PostgreSQL 16 + PostGIS** (Amazon RDS) | | **D-006 확정** |
 | 캐시·실시간 상태 | Redis (ElastiCache) | | |
@@ -85,3 +85,4 @@
 - 2026-10-21: 제품 분석 PostHog 확정 표시 (D-017)
 - 2026-10-21: T-016 — 검증·로깅·테스트·JWT 라이브러리 행 추가
 - 2026-10-23: T-024 — 관리자 웹 Next.js 15 + React 19 (`admin/`), 테스트 Vitest + Testing Library(jsdom)
+- 2026-10-23: T-025 — 앱 Expo SDK 58·Expo Router·TanStack Query·Zustand 적용, 앱 테스트 jest-expo + RNTL

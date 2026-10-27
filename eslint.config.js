@@ -12,7 +12,8 @@ export default tseslint.config(
       '**/node_modules/**',
       '**/.next/**',
       'admin/next-env.d.ts',
-      'app/**',
+      'app/.expo/**',
+      'app/expo-env.d.ts',
       'docs/**',
     ],
   },
@@ -37,14 +38,40 @@ export default tseslint.config(
     },
   },
   {
-    // 관리자 웹 (React)
-    files: ['admin/**/*.{ts,tsx}'],
+    // 관리자 웹·모바일 앱 (React)
+    files: ['admin/**/*.{ts,tsx}', 'app/**/*.{ts,tsx}'],
     plugins: { 'react-hooks': reactHooks },
     rules: reactHooks.configs.recommended.rules,
   },
   {
+    // 모바일 앱 테스트: jest.mock 팩토리는 require를 쓴다
+    files: ['app/jest.setup.ts', 'app/src/**/*.test.{ts,tsx}', 'app/src/test/**'],
+    rules: {
+      '@typescript-eslint/no-require-imports': 'off',
+      '@typescript-eslint/no-unsafe-return': 'off',
+      '@typescript-eslint/no-unsafe-member-access': 'off',
+      '@typescript-eslint/no-unsafe-call': 'off',
+      '@typescript-eslint/no-unsafe-assignment': 'off',
+    },
+  },
+  {
     files: ['**/*.js'],
     ...tseslint.configs.disableTypeChecked,
+  },
+  {
+    // 모바일 앱: Metro·Jest 설정 파일은 CommonJS
+    files: ['app/*.config.js'],
+    languageOptions: {
+      sourceType: 'commonjs',
+      globals: {
+        require: 'readonly',
+        module: 'writable',
+        __dirname: 'readonly',
+        process: 'readonly',
+        URL: 'readonly',
+      },
+    },
+    rules: { '@typescript-eslint/no-require-imports': 'off' },
   },
   prettier,
 );

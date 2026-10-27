@@ -51,7 +51,13 @@ export function fakeVerifiers(): SocialVerifiers {
 }
 
 export async function createTestContext(
-  overrides: { redisUrl?: string; raceUpdates?: RaceUpdateSink } = {},
+  overrides: {
+    redisUrl?: string;
+    raceUpdates?: RaceUpdateSink;
+    /** true면 가짜 verifier 대신 config로 만든 verifier를 쓴다 (개발 전용 로그인 테스트) */
+    configVerifiers?: boolean;
+    devLogin?: boolean;
+  } = {},
 ): Promise<TestContext> {
   const { publicKey, privateKey } = await generateKeyPair('ES256', { extractable: true });
   const config: Config = {
@@ -67,6 +73,7 @@ export async function createTestContext(
     social: { kakao: null, google: null, apple: null },
     push: { dryRun: true, expoAccessToken: undefined, ratePerSec: 600 },
     unlink: { dryRun: true, kakaoAdminKey: undefined },
+    devLogin: overrides.devLogin ?? false,
   };
   const { db, client } = createDb(config.databaseUrl, { max: 4 });
   const redis = new Redis(config.redisUrl, {
@@ -81,7 +88,7 @@ export async function createTestContext(
     db,
     redis,
     logger: false,
-    verifiers: fakeVerifiers(),
+    ...(!overrides.configVerifiers && { verifiers: fakeVerifiers() }),
     configCacheMs: 0,
     ...(overrides.raceUpdates && { raceUpdates: overrides.raceUpdates }),
   });
