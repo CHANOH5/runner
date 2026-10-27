@@ -36,8 +36,8 @@
 | 대회 데이터 수집 | 관리자 입력 + 변경 감지 수집기(`undici`+`cheerio`, 필요한 사이트만 Playwright) → 검수 대기열 | 주최사 셀프 등록·제휴 | T-012, `05-race-data-sourcing.md` |
 | 기록 예측 | 서버 TypeScript 모듈 (Riegel + 보정) → 이후 Python 모델 | | D-004 |
 | AI 설명 생성 | Claude API (Phase 4) | | |
-| 인프라 코드 | AWS CDK (TypeScript) | Terraform | |
-| CI/CD | GitHub Actions, EAS Build / EAS Update | | |
+| 인프라 코드 | AWS CDK (TypeScript) — `infra/`, 환경별 기반·앱 스택, ECS Fargate ARM64, 관리자 웹도 Fargate(같은 ALB) | Terraform | T-029, `07-deploy.md` |
+| CI/CD | GitHub Actions(검증: lint·typecheck·build·test·`cdk synth`·Docker 빌드, 배포 단계 없음), EAS Build / EAS Update | | 배포는 `07-deploy.md` 순서로 수동 |
 | 모니터링 | Sentry (앱·서버), CloudWatch | Datadog | |
 | 제품 분석 | **PostHog** — 내부 `user_id`만 전송, 이메일·좌표·닉네임 미전송 (P-PRI-08) | Amplitude, Firebase Analytics | **D-017 확정** |
 
@@ -86,3 +86,4 @@
 - 2026-10-21: T-016 — 검증·로깅·테스트·JWT 라이브러리 행 추가
 - 2026-10-23: T-024 — 관리자 웹 Next.js 15 + React 19 (`admin/`), 테스트 Vitest + Testing Library(jsdom)
 - 2026-10-23: T-025 — 앱 Expo SDK 58·Expo Router·TanStack Query·Zustand 적용, 앱 테스트 jest-expo + RNTL
+- 2026-10-27: T-029 — 인프라 코드(`infra/`, 관리자 웹 Fargate 호스팅)·CI 검증 범위

@@ -7,6 +7,7 @@
 ```
 .
 ├── app/                 모바일 앱 (Expo SDK 58 + Expo Router, D-005, T-025) — 웹(react-native-web)으로도 실행
+├── infra/               AWS CDK (staging·prod 스택, 배포는 수동 — docs/tech/07)
 ├── admin/               관리자 웹 (Next.js 15, A-001~A-004·A-008, tech/03 9-0-1)
 ├── packages/shared/     앱·서버·관리자 웹 공유 Zod 스키마·타입 (@berun/shared, tech/06)
 ├── server/              API 서버 (Node 22 + TypeScript + Fastify + Drizzle)
@@ -151,9 +152,23 @@ pnpm dev:app         # API http://localhost:3000 + 앱(웹) http://localhost:808
 - PK는 UUID v7을 애플리케이션에서 만든다 (PostgreSQL 16에 `uuidv7()` 없음).
 - 이미 적용된 마이그레이션 파일은 고치지 않는다. 새 파일을 추가한다.
 
+## 운영 배포 준비 (T-029)
+
+AWS 리소스는 아직 없다. 코드와 순서만 있다 — **배포는 사용자가 [`docs/tech/07-deploy.md`](docs/tech/07-deploy.md) 순서로 직접** 한다.
+
+```bash
+pnpm --filter @berun/infra synth      # CDK 템플릿 생성만 (AWS 자격 증명 불필요) → infra/cdk.out
+docker build -f server/Dockerfile -t berun-server .   # API·워커·마이그레이션 공용 이미지
+docker build -f admin/Dockerfile -t berun-admin .     # 관리자 웹 (Next.js standalone)
+```
+
+- `infra/`: 환경(staging·prod)마다 `Berun-{Stage}-Base`(KMS·ECR)와 `Berun-{Stage}-App`(VPC·RDS·Redis·ECS·ALB·WAF·S3) 스택. 테스트는 스냅숏 + 규칙 검사.
+- 저장 암호화 키: 로컬·테스트는 `TOKEN_ENC_KEY`, 운영은 KMS로 감싼 데이터 키(`TOKEN_ENC_KEY_KMS_CIPHERTEXT`). 운영에서 평문 키는 거부된다.
+- 운영 첫 owner: `node dist/cli/create-owner.js --email ...` (로컬 확인: `pnpm --filter @berun/server admin:create-owner -- --email ...`). 활성 owner가 있으면 거부, 감사 로그를 남긴다.
+
 ## CI
 
-`.github/workflows/ci.yml` — push·PR마다: install(`--frozen-lockfile`) → lint → typecheck → build → 테스트 DB 생성 → migrate → seed → test. PostGIS·Redis는 서비스 컨테이너(로컬과 같은 이미지·포트 55432/56379), Node는 `.nvmrc`. 비밀값은 쓰지 않는다.
+`.github/workflows/ci.yml` — push·PR마다: install(`--frozen-lockfile`) → lint → typecheck → build → 테스트 DB 생성 → migrate → seed → test → `cdk synth`, 그리고 server·admin Docker 이미지 빌드(push 없음). PostGIS·Redis는 서비스 컨테이너(로컬과 같은 이미지·포트 55432/56379), Node는 `.nvmrc`. 비밀값은 쓰지 않는다.
 
 로컬에서 같은 순서로 확인하려면 (새 DB 이름으로, Node 22):
 

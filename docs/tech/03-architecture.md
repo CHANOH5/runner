@@ -91,8 +91,8 @@
 |---|---|
 | 사용자 인증 | 소셜 로그인 → 서버 자체 JWT 발급 (access 15분, refresh 30일, 회전). 신규 가입은 Redis 가입 세션(30분)을 거친다 (8장) |
 | 응원 링크 | 128비트 랜덤 토큰, DB에는 해시만 저장 |
-| 관리자 | 별도 계정, 2단계 인증, 접속 IP 제한, 작업 감사 로그 |
-| 저장 데이터 암호화 | RDS·S3 저장 시 암호화, 배번 사진은 비공개 버킷 + 5분 서명 URL |
+| 관리자 | 별도 계정, 2단계 인증, 접속 IP 제한(WAF: 관리자 호스트·`/api/admin` 허용 IP만), 작업 감사 로그. 운영 첫 owner는 일회성 CLI(`dist/cli/create-owner.js`) |
+| 저장 데이터 암호화 | RDS·Redis·S3·로그·비밀값은 KMS `data` 키, 배번 사진은 비공개 버킷 + 5분 서명 URL. 앱이 암호화하는 값(TOTP 비밀키·Apple 토큰)은 KMS `token` 키로 감싼 데이터 키(봉투 암호화, `lib/token-key.ts`) — T-029, `07-deploy.md` |
 | 전송 구간 | TLS 1.2 이상 |
 | 개인정보 접근 | 운영자 DB 직접 접근 금지, 관리자 도구로만 조회하고 조회 기록을 남김 |
 
@@ -208,7 +208,7 @@ app/src/components/map/
 구현 (T-018, `server/src/modules/auth/`):
 - provider 검증은 `SocialVerifier` 인터페이스(`verifiers.ts`). 카카오(토큰 정보로 앱 id 확인 → 사용자 정보), Google(ID 토큰 JWKS 검증, audience = `GOOGLE_CLIENT_IDS`), Apple(identity token JWKS 검증 + 인가 코드 교환). 실제 키로는 아직 확인하지 않았다 — 키 발급 후 수동 확인 필요. 통합 테스트는 가짜 verifier를 주입한다.
 - 연결 해제 작업(`social_unlink_jobs`)은 **신규 소셜 로그인 시점에 "가입 만료 + 1분"으로 미리 넣는다**. Redis 만료에는 훅이 없어서다. 가입 중단·만 14세 미만이면 실행 시각을 지금으로 당기고, 가입이 끝나면 같은 소셜 계정의 대기 작업을 모두 지운다. Google은 작업을 만들지 않는다. 워커(다음 작업)는 해제 직전 `auth_identities`에 같은 계정이 없는지 다시 확인한다.
-- Apple refresh token은 `TOKEN_ENC_KEY`(AES-256-GCM)로 암호화해 가입 세션·`auth_identities.revoke_token_enc`에 둔다. 운영은 KMS 데이터 키로 바꾼다.
+- Apple refresh token은 `TOKEN_ENC_KEY`(AES-256-GCM)로 암호화해 가입 세션·`auth_identities.revoke_token_enc`에 둔다. 운영은 KMS로 감싼 데이터 키(`TOKEN_ENC_KEY_KMS_CIPHERTEXT`)를 시작할 때 한 번 풀어 같은 AES-256-GCM 형식으로 쓴다 (T-029). 운영에서 평문 `TOKEN_ENC_KEY`는 거부.
 - 기기: `X-Device-Id`를 `devices.id`로 쓴다. 다른 사용자가 쓰던 기기면 소유자를 바꾸고 푸시 토큰을 비운다. 같은 기기의 이전 세션은 로그인 시 폐기한다.
 
 **탈퇴 구현 (T-021, `server/src/modules/users/delete-account.ts`)**
@@ -344,3 +344,4 @@ app/src/
 - 2026-10-27: T-027 — PRD v1.11 앱 반영 메모(9-0-2): 추천 대회 정렬·제목, 관심 해제 되돌리기, 처리방침 원격 설정, 네이티브 달력 피커
 - 2026-10-23: T-025 — 모바일 앱 구조(9-0-2): 토큰·게이트·기기 저장·웹 확인 프록시·API 대체, 지도 래퍼 현재 상태(6장), 개발 전용 로그인(8장)
 - 2026-10-27: T-026 — 9-0-2 API 대체 항목에 서버 구현 완료 메모
+- 2026-10-27: T-029 — 4장 저장 암호화(KMS 봉투 암호화)·관리자 IP 제한·첫 owner CLI, 8장 Apple 토큰 키 운영 방식
