@@ -32,5 +32,5 @@
 | T-023 | 서버: CI(GitHub Actions), D-020 실패 기록 1년 정리 배치, 휴면 처리 배치(P-RET-03) | 개발자 | 완료 | `.github/`, `server/` | main 병합. 테스트 228개 통과. 휴면 안내 이메일은 보류(D-021), 앱 푸시만 발송 |
 | T-024 | 관리자 웹 (Phase 1 화면 A-001~A-004·A-008, 관리자 API 연결) | 개발자 | 완료 | `admin/` | main 병합. 사용자가 로컬(localhost:3100)에서 확인. 테스트 관리자 9·서버 229 통과. 공지·대시보드 통계는 API 대기 |
 | T-025 | 모바일 앱 1차: Expo 기초 + 흐름 A·B 화면 (온보딩·로그인, 홈, 대회 목록·상세, 참가 예정·접수 상태, 기록·예측·페이스 전략, 마이 일부) | 개발자 | 완료 | `app/` | main 병합. 사용자가 웹 미리보기(localhost:8081)로 확인. 테스트 서버 236·관리자 9·앱 74 통과. 네이티브 빌드·실기기 확인 전 |
-| T-026 | 서버: `GET /races/count`, `GET /races/calendar`, `GET /notices/{id}`, `app-config`의 `privacyPolicyUrl` (PRD v1.11) | 개발자 | 진행 | `server/`, `packages/shared` | 개발-서버 세션, 별도 브랜치. main 병합은 사용자 승인 후 |
-| T-027 | 앱: PRD v1.11 반영 (추천 대회 제목, 관심 해제 되돌리기 토스트, 처리방침 링크) | 개발자 | 진행 | `app/` | 개발-앱 세션, 별도 브랜치. `packages/shared`는 T-026이 담당. T-026 먼저 병합 |
+| T-026 | 서버: `GET /races/count`, `GET /races/calendar`, `GET /notices/{id}`, `app-config`의 `privacyPolicyUrl` (PRD v1.11) | 개발자 | 완료 | `server/`, `packages/shared` | main 병합. 테스트 서버 250 통과 |
+| T-027 | 앱: PRD v1.11 반영 (추천 대회 제목, 관심 해제 되돌리기 토스트, 처리방침 링크) | 개발자 | 완료 | `app/` | main 병합 (T-026 다음). 합친 상태 테스트 앱 85 통과 |
